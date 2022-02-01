@@ -107,11 +107,16 @@ inline void pqxx::result::for_each(CALLABLE &&func) const
 {
   using args_tuple = internal::args_t<decltype(func)>;
   constexpr auto sz{std::tuple_size_v<args_tuple>};
-  static_assert(sz > 0, "Callback for for_each must take parameters, one for each column in the result.");
+  static_assert(
+    sz > 0,
+    "Callback for for_each must take parameters, one for each column in the "
+    "result.");
 
   auto const cols{this->columns()};
   if (sz != cols)
-    throw usage_error{internal::concat("Callback to for_each takes ", sz, "parameter", (sz == 1) ? "" : "s", ", but result set has ", cols, "field", (cols == 1) ? "" : "s", ".")};
+    throw usage_error{internal::concat(
+      "Callback to for_each takes ", sz, "parameter", (sz == 1) ? "" : "s",
+      ", but result set has ", cols, "field", (cols == 1) ? "" : "s", ".")};
   for (auto const r : *this)
   {
     // TODO: Do this in a way that doesn't require default constructors.

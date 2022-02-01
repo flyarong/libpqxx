@@ -78,7 +78,8 @@ void test_result_iterator_assignment()
 void check_employee(std::string name, int salary)
 {
   PQXX_CHECK(name == "x" or name == "y" or name == "z", "Unknown name.");
-  PQXX_CHECK(salary == 1000 or salary == 1200 or salary == 1500, "Unknown salary.");
+  PQXX_CHECK(
+    salary == 1000 or salary == 1200 or salary == 1500, "Unknown salary.");
 }
 
 
@@ -99,28 +100,31 @@ void test_result_for_each()
   res.for_each(check_employee);
 
   // Use for_each with a simple lambda.
-  res.for_each([](std::string name, int salary){ check_employee(name, salary); });
+  res.for_each(
+    [](std::string name, int salary) { check_employee(name, salary); });
 
   // Use for_each with a lambda closure.
   std::string names{};
   int total{0};
 
-  res.for_each([&names, &total](std::string name, int salary){
+  res.for_each([&names, &total](std::string name, int salary) {
     names.append(name);
     total += salary;
   });
-  PQXX_CHECK_EQUAL(names, "xyz", "result::for_each did not accumulate names correctly.");
+  PQXX_CHECK_EQUAL(
+    names, "xyz", "result::for_each did not accumulate names correctly.");
   PQXX_CHECK_EQUAL(total, 1000 + 1200 + 1500, "Salaries added up wrong.");
 
   // In addition to regular conversions, you can receive arguments as
   // string_view.
   names.clear();
   total = 0;
-  res.for_each([&names, &total](std::string name, int salary){
+  res.for_each([&names, &total](std::string_view name, int salary) {
     names.append(name);
     total += salary;
   });
-  PQXX_CHECK_EQUAL(names, "xyz", "result::for_each did not accumulate names correctly.");
+  PQXX_CHECK_EQUAL(
+    names, "xyz", "result::for_each did not accumulate names correctly.");
   PQXX_CHECK_EQUAL(total, 1000 + 1200 + 1500, "Salaries added up wrong.");
 }
 

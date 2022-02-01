@@ -239,7 +239,8 @@ public:
    */
   [[nodiscard]] PQXX_PURE size_type affected_rows() const;
 
-// C++20: Concept like std::invocable, but without specifying parameter types.
+  // C++20: Concept like std::invocable, but without specifying parameter
+  // types.
   /// Run `func` on each row, passing the row's fields as parameters.
   /** Goes through the rows from first to last.  Converts a row's fields to
    * `func`'s respective parameter types, and passes them to `func`.
@@ -264,8 +265,7 @@ public:
    * @throws usage_error if `func`'s number of parameters does not match the
    * number of columns in this result.
    */
-  template<typename CALLABLE>
-  inline void for_each(CALLABLE &&func) const;
+  template<typename CALLABLE> inline void for_each(CALLABLE &&func) const;
 
 private:
   using data_pointer = std::shared_ptr<internal::pq::PGresult const>;

@@ -461,7 +461,7 @@ void PQXX_LIBEXPORT wait_for(unsigned int microseconds);
 
 
 /// Helper for determining a function's parameter types.
-/** This function has no definition.  It's not meant to be actually called. 
+/** This function has no definition.  It's not meant to be actually called.
  * It's just there for pattern-matching in the compiler, so we can use its
  * hypothetical return value.
  */
@@ -470,7 +470,7 @@ std::tuple<ARGS...> args_f(RETURN (&func)(ARGS...));
 
 
 /// Helper for determining a `std::function`'s parameter types.
-/** This function has no definition.  It's not meant to be actually called. 
+/** This function has no definition.  It's not meant to be actually called.
  * It's just there for pattern-matching in the compiler, so we can use its
  * hypothetical return value.
  */
@@ -491,15 +491,17 @@ std::tuple<ARGS...> member_args_f(RETURN (CLASS::*)(ARGS...) const);
 /// Helper for determining a callable type's parameter types.
 /** This specialisation should work for lambdas.
  *
- * This function has no definition.  It's not meant to be actually called. 
+ * This function has no definition.  It's not meant to be actually called.
  * It's just there for pattern-matching in the compiler, so we can use its
  * hypothetical return value.
  */
 template<typename CALLABLE>
-auto args_f(CALLABLE const &f) -> decltype(member_args_f(&CALLABLE::operator()));
+auto args_f(CALLABLE const &f)
+  -> decltype(member_args_f(&CALLABLE::operator()));
 
 
 /// A callable's parameter types, as a tuple.
-template<typename CALLABLE> using args_t = decltype(args_f(std::declval<CALLABLE>()));
+template<typename CALLABLE>
+using args_t = decltype(args_f(std::declval<CALLABLE>()));
 } // namespace pqxx::internal
 #endif
