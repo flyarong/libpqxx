@@ -479,11 +479,19 @@ std::tuple<ARGS...> args_f(std::function<RETURN(ARGS...)>);
 
 
 /// Helper for determining a member function's parameter types.
+/** This function has no definition.  It's not meant to be actually called.
+ * It's just there for pattern-matching in the compiler, so we can use its
+ * hypothetical return value.
+ */
 template<typename CLASS, typename RETURN, typename... ARGS>
 std::tuple<ARGS...> member_args_f(RETURN (CLASS::*)(ARGS...));
 
 
 /// Helper for determining a const member function's parameter types.
+/** This function has no definition.  It's not meant to be actually called.
+ * It's just there for pattern-matching in the compiler, so we can use its
+ * hypothetical return value.
+ */
 template<typename CLASS, typename RETURN, typename... ARGS>
 std::tuple<ARGS...> member_args_f(RETURN (CLASS::*)(ARGS...) const);
 

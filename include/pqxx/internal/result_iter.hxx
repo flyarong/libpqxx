@@ -117,13 +117,7 @@ inline void pqxx::result::for_each(CALLABLE &&func) const
     throw usage_error{internal::concat(
       "Callback to for_each takes ", sz, "parameter", (sz == 1) ? "" : "s",
       ", but result set has ", cols, "field", (cols == 1) ? "" : "s", ".")};
-  for (auto const r : *this)
-  {
-    // TODO: Do this in a way that doesn't require default constructors.
-    // TODO: But also avoid checking size in row::as() on every iteration.
-    args_tuple args;
-    r.to(args);
-    std::apply(func, args);
-  }
+
+  for (auto const r : *this) std::apply(func, r.as_tuple<args_tuple>());
 }
 #endif

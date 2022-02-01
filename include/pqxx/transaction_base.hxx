@@ -349,11 +349,10 @@ public:
    * the entire connection becomes effectively unusable.
    *
    * Querying in this way is faster than the `exec()` methods for larger
-   * results (but probably slower for small ones).  Also, you can start
-   * processing rows before the full result is in.  Also, `stream()` scales
-   * better in terms of memory usage.  Where @ref exec() reads the entire
-   * result into memory at once, `stream()` will read and process one row at at
-   * a time.
+   * results (but slower for small ones).  You can start processing rows before
+   * the full result is in.  Also, `stream()` scales better in terms of memory
+   * usage.  Where @ref exec() reads the entire result into memory at once,
+   * `stream()` will read and process one row at at a time.
    *
    * Your query executes as part of a COPY command, not as a stand-alone query,
    * so there are limitations to what you can do in the query.  It can be
