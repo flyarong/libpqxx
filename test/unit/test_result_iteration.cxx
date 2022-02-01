@@ -113,7 +113,7 @@ void test_result_for_each()
   PQXX_CHECK_EQUAL(total, 1000 + 1200 + 1500, "Salaries added up wrong.");
 
   // In addition to regular conversions, you can receive arguments as
-  // string_view, as well as references.
+  // string_view.
   names.clear();
   total = 0;
   res.for_each([&names, &total](std::string name, int salary){
