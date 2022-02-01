@@ -511,5 +511,13 @@ auto args_f(CALLABLE const &f)
 /// A callable's parameter types, as a tuple.
 template<typename CALLABLE>
 using args_t = decltype(args_f(std::declval<CALLABLE>()));
+
+
+/// Apply `strip_t` to each of a tuple type's component types.
+/** This function has no definition.  It is not meant to be called, only to be
+ * used to deduce the right types.
+ */
+template<typename... TYPES>
+std::tuple<strip_t<TYPES>...> strip_types(std::tuple<TYPES...> const &);
 } // namespace pqxx::internal
 #endif

@@ -240,7 +240,6 @@ public:
   [[nodiscard]] PQXX_PURE size_type affected_rows() const;
 
   // C++20: Concept like std::invocable, but without specifying param types.
-  // TODO: Can we support references for the parameters?
   /// Run `func` on each row, passing the row's fields as parameters.
   /** Goes through the rows from first to last.  You provide a callable `func`.
    *
@@ -250,6 +249,11 @@ public:
    *
    * If any of your parameter types is `std::string_view`, it refers to the
    * underlying storage of this `result`.
+   *
+   * If any of your parameter types is a reference type, its argument will
+   * refer to a temporary value which only lives for the duration of that
+   * single invocation to `func`.  If the reference is an lvalue reference, it
+   * must be `const`.
    *
    * For example, this queries employee names and salaries from the database
    * and prints how much each would like to earn instead:
