@@ -247,6 +247,11 @@ public:
    * the row's fields to the types of `func`'s parameters, and pass them to
    * `func`.
    *
+   * (Therefore `func` must have a _single_ signature.  It can't be a generic
+   * lambda, or an object of a class with multiple overloaded function call
+   * operators.  Otherwise, `for_each` will have no way to detect a parameter
+   * list without ambiguity.)
+   *
    * If any of your parameter types is `std::string_view`, it refers to the
    * underlying storage of this `result`.
    *
