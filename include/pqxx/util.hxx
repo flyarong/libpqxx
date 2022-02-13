@@ -475,7 +475,7 @@ std::tuple<ARGS...> args_f(RETURN (&func)(ARGS...));
  * hypothetical return value.
  */
 template<typename RETURN, typename... ARGS>
-std::tuple<ARGS...> args_f(std::function<RETURN(ARGS...)>);
+std::tuple<ARGS...> args_f(std::function<RETURN(ARGS...)> const &);
 
 
 /// Helper for determining a member function's parameter types.
