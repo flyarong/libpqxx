@@ -118,7 +118,7 @@ inline void pqxx::result::for_each(CALLABLE &&func) const
       "Callback to for_each takes ", sz, "parameter", (sz == 1) ? "" : "s",
       ", but result set has ", cols, "field", (cols == 1) ? "" : "s", ".")};
 
-  using pass_tuple = decltype(internal::strip_types(std::declval<args_tuple>()));
+  using pass_tuple = pqxx::internal::strip_types_t<args_tuple>;
   for (auto const r : *this) std::apply(func, r.as_tuple<pass_tuple>());
 }
 #endif

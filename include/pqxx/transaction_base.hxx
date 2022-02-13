@@ -15,7 +15,7 @@
 #define PQXX_H_TRANSACTION_BASE
 
 #if !defined(PQXX_H_COMPILER_PUBLIC)
-#error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
+#  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
 #endif
 
 #include <string_view>
@@ -37,6 +37,7 @@
 #include "pqxx/result.hxx"
 #include "pqxx/row.hxx"
 #include "pqxx/stream_from.hxx"
+#include "pqxx/util.hxx"
 
 namespace pqxx::internal::gate
 {
@@ -328,11 +329,11 @@ public:
    * an exception partway through.
    *
    * The stream lives entirely within the lifetime of the transaction.  Make
-   * sure you destroy the stream before you destroy the transaction.  Also,
-   * either iterate the stream all the way to the end, or destroy first the
-   * stream and then the transaction without touching either in any other way.
-   * Until the stream has finished, the transaction is in a special state where
-   * it cannot execute queries.
+   * sure you destroy the stream before you destroy the transaction.  Either
+   * iterate the stream all the way to the end, or destroy first the stream
+   * and then the transaction without touching either in any other way.  Until
+   * the stream has finished, the transaction is in a special state where it
+   * cannot execute queries.
    *
    * As a special case, tuple may contain `std::string_view` fields, but the
    * strings to which they point will only remain valid until you extract the
@@ -373,6 +374,37 @@ public:
     return pqxx::internal::owning_stream_input_iteration<TYPE...>{
       std::unique_ptr<stream_from>{
         new stream_from{stream_from::query(*this, query)}}};
+  }
+
+  // C++20: Concept like std::invocable, but without specifying param types.
+  /// Perform a streaming query, and for each result row, call `func`.
+  /** Here, `func` can be a function, a `std::function`, a lambda, or an
+   * object that supports the function call operator.  Of course `func` must
+   * have an unambiguous signature; it can't be overloaded or generic.
+   *
+   * The `for_each` function executes `query` in a stream using
+   * @ref pqxx::stream_from.  Every time a row of data comes in from the
+   * server, it converts the row's fields to the types of `func`'s respective
+   * parameters, and calls `func` with those values.
+   *
+   * This will not work for all queries, but straightforward `SELECT` and
+   * `UPDATE ... RETURNING` queries should work.  Consult the documentation for
+   * @ref pqxx::stream_from and PostgreSQL's underlying `COPY` command for the
+   * full details.
+   *
+   * Streaming a query like this is likely to be slower than the @ref exec()
+   * functions for small result sets, but faster for large result sets.  So if
+   * performance matters, you'll want to use `for_each` if you query large
+   * amounts of data, but not if you do lots of queries with small outputs.
+   */
+  template<typename CALLABLE>
+  inline auto for_each(std::string_view query, CALLABLE &&func)
+  {
+    using param_types =
+      pqxx::internal::strip_types_t<pqxx::internal::args_t<CALLABLE>>;
+    param_types const *const sample{nullptr};
+    auto data_stream{stream_like(query, sample)};
+    for (auto const &fields : data_stream) std::apply(func, fields);
   }
 
   /**
@@ -637,6 +669,13 @@ private:
   PQXX_PRIVATE void unregister_focus(transaction_focus *) noexcept;
   PQXX_PRIVATE void register_pending_error(zview) noexcept;
   PQXX_PRIVATE void register_pending_error(std::string &&) noexcept;
+
+  /// Like @ref stream(), but takes a tuple rather than a parameter pack.
+  template<typename... ARGS>
+  auto stream_like(std::string_view query, std::tuple<ARGS...> const *)
+  {
+    return stream<ARGS...>(query);
+  }
 
   connection &m_conn;
 

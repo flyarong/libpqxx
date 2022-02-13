@@ -12,7 +12,7 @@
 #define PQXX_H_UTIL
 
 #if !defined(PQXX_H_COMPILER_PUBLIC)
-#error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
+#  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
 #endif
 
 #include <cctype>
@@ -513,11 +513,16 @@ template<typename CALLABLE>
 using args_t = decltype(args_f(std::declval<CALLABLE>()));
 
 
-/// Apply `strip_t` to each of a tuple type's component types.
+/// Helper: Apply `strip_t` to each of a tuple type's component types.
 /** This function has no definition.  It is not meant to be called, only to be
  * used to deduce the right types.
  */
 template<typename... TYPES>
 std::tuple<strip_t<TYPES>...> strip_types(std::tuple<TYPES...> const &);
+
+
+/// Take a tuple type and apply @ref strip_t to its component types.
+template<typename... TYPES>
+using strip_types_t = decltype(strip_types(std::declval<TYPES...>()));
 } // namespace pqxx::internal
 #endif
