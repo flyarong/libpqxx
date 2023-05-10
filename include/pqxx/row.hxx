@@ -4,7 +4,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/result instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -84,14 +84,10 @@ public:
   [[nodiscard]] reference front() const noexcept;
   [[nodiscard]] reference back() const noexcept;
 
-  // TODO: noexcept.  Breaks ABI.
-  [[nodiscard]] const_reverse_row_iterator rbegin() const;
-  // TODO: noexcept.  Breaks ABI.
-  [[nodiscard]] const_reverse_row_iterator crbegin() const;
-  // TODO: noexcept.  Breaks ABI.
-  [[nodiscard]] const_reverse_row_iterator rend() const;
-  // TODO: noexcept.  Breaks ABI.
-  [[nodiscard]] const_reverse_row_iterator crend() const;
+  [[nodiscard]] const_reverse_row_iterator rbegin() const noexcept;
+  [[nodiscard]] const_reverse_row_iterator crbegin() const noexcept;
+  [[nodiscard]] const_reverse_row_iterator rend() const noexcept;
+  [[nodiscard]] const_reverse_row_iterator crend() const noexcept;
 
   [[nodiscard]] reference operator[](size_type) const noexcept;
   /** Address field by name.
@@ -185,6 +181,9 @@ public:
 
   /// Extract entire row's values into a tuple.
   /** Converts to the types of the tuple's respective fields.
+   *
+   * @throw usage_error If the number of columns in the `row` does not match
+   * the number of fields in `t`.
    */
   template<typename Tuple> void to(Tuple &t) const
   {
@@ -192,6 +191,12 @@ public:
     convert(t);
   }
 
+  /// Extract entire row's values into a tuple.
+  /** Converts to the types of the tuple's respective fields.
+   *
+   * @throw usage_error If the number of columns in the `row` does not match
+   * the number of fields in `t`.
+   */
   template<typename... TYPE> std::tuple<TYPE...> as() const
   {
     check_size(sizeof...(TYPE));
@@ -211,6 +216,16 @@ protected:
       throw usage_error{internal::concat(
         "Tried to extract ", expected, " field(s) from a row of ", size(),
         ".")};
+  }
+
+  /// Convert to a given tuple of values, don't check sizes.
+  /** We need this for cases where we have a full tuple of field types, but
+   * not a parameter pack.
+   */
+  template<typename TUPLE> TUPLE as_tuple() const
+  {
+    using seq = std::make_index_sequence<std::tuple_size_v<TUPLE>>;
+    return get_tuple<TUPLE>(seq{});
   }
 
   template<typename... T> friend class pqxx::internal::result_iter;
@@ -275,7 +290,7 @@ public:
   using reference = field;
 
 #include "pqxx/internal/ignore-deprecated-pre.hxx"
-  const_row_iterator() = default;
+  const_row_iterator() noexcept = default;
 #include "pqxx/internal/ignore-deprecated-post.hxx"
   const_row_iterator(row const &t, row_size_type c) noexcept :
           field{t.m_result, t.m_index, c}
@@ -288,8 +303,14 @@ public:
    * @name Dereferencing operators
    */
   //@{
-  [[nodiscard]] constexpr pointer operator->() const noexcept { return this; }
-  [[nodiscard]] reference operator*() const noexcept { return {*this}; }
+  [[nodiscard]] constexpr pointer operator->() const noexcept
+  {
+    return this;
+  }
+  [[nodiscard]] reference operator*() const noexcept
+  {
+    return {*this};
+  }
   //@}
 
   /**
@@ -299,15 +320,13 @@ public:
   const_row_iterator &operator=(const_row_iterator const &) noexcept = default;
   const_row_iterator &operator=(const_row_iterator &&) noexcept = default;
 
-  // TODO: noexcept.  Breaks ABI.
-  const_row_iterator operator++(int);
+  const_row_iterator operator++(int) noexcept;
   const_row_iterator &operator++() noexcept
   {
     ++m_col;
     return *this;
   }
-  // TODO: noexcept.  Breaks ABI.
-  const_row_iterator operator--(int);
+  const_row_iterator operator--(int) noexcept;
   const_row_iterator &operator--() noexcept
   {
     --m_col;
@@ -428,15 +447,13 @@ public:
     iterator_type::operator--();
     return *this;
   }
-  // TODO: noexcept.  Breaks ABI.
-  const_reverse_row_iterator operator++(int);
+  const_reverse_row_iterator operator++(int) noexcept;
   const_reverse_row_iterator &operator--() noexcept
   {
     iterator_type::operator++();
     return *this;
   }
   const_reverse_row_iterator operator--(int);
-  // TODO: noexcept.  Breaks ABI.
   const_reverse_row_iterator &operator+=(difference_type i) noexcept
   {
     iterator_type::operator-=(i);

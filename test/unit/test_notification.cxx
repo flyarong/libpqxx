@@ -1,7 +1,9 @@
 #include <chrono>
 
 #include <pqxx/internal/header-pre.hxx>
+
 #include <pqxx/internal/wait.hxx>
+
 #include <pqxx/internal/header-post.hxx>
 
 #include <pqxx/nontransaction>
@@ -54,7 +56,7 @@ void test_receive(
 
   int notifs{0};
   for (int i{0}; (i < 10) and (notifs == 0);
-       ++i, pqxx::internal::wait_for(1'000'000u))
+       ++i, pqxx::internal::wait_for(1000u))
     notifs = conn.get_notifs();
 
   PQXX_CHECK_EQUAL(notifs, 1, "Got wrong number of notifications.");

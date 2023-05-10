@@ -1,6 +1,6 @@
 /** Implementation of libpqxx exception classes.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -108,6 +108,11 @@ pqxx::argument_error::argument_error(std::string const &whatarg) :
 
 pqxx::conversion_error::conversion_error(std::string const &whatarg) :
         domain_error{whatarg}
+{}
+
+
+pqxx::unexpected_null::unexpected_null(std::string const &whatarg) :
+        conversion_error{whatarg}
 {}
 
 

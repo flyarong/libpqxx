@@ -4,7 +4,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/result instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -17,6 +17,7 @@
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
 #endif
 
+#include <functional>
 #include <ios>
 #include <memory>
 #include <stdexcept>
@@ -31,8 +32,7 @@
 
 namespace pqxx::internal
 {
-// TODO: Make noexcept (but breaks ABI).
-PQXX_LIBEXPORT void clear_result(pq::PGresult const *);
+PQXX_LIBEXPORT void clear_result(pq::PGresult const *) noexcept;
 } // namespace pqxx::internal
 
 
@@ -157,7 +157,6 @@ public:
   [[nodiscard]] row operator[](size_type i) const noexcept;
 
 #if defined(PQXX_HAVE_MULTIDIMENSIONAL_SUBSCRIPT)
-  // TODO: If C++23 will let us, also accept string for the column.
   [[nodiscard]] field
   operator[](size_type row_num, row_size_type col_num) const noexcept;
 #endif
@@ -238,6 +237,43 @@ public:
    */
   [[nodiscard]] PQXX_PURE size_type affected_rows() const;
 
+  // C++20: Concept like std::invocable, but without specifying param types.
+  /// Run `func` on each row, passing the row's fields as parameters.
+  /** Goes through the rows from first to last.  You provide a callable `func`.
+   *
+   * For each row in the `result`, `for_each` will call `func`.  It converts
+   * the row's fields to the types of `func`'s parameters, and pass them to
+   * `func`.
+   *
+   * (Therefore `func` must have a _single_ signature.  It can't be a generic
+   * lambda, or an object of a class with multiple overloaded function call
+   * operators.  Otherwise, `for_each` will have no way to detect a parameter
+   * list without ambiguity.)
+   *
+   * If any of your parameter types is `std::string_view`, it refers to the
+   * underlying storage of this `result`.
+   *
+   * If any of your parameter types is a reference type, its argument will
+   * refer to a temporary value which only lives for the duration of that
+   * single invocation to `func`.  If the reference is an lvalue reference, it
+   * must be `const`.
+   *
+   * For example, this queries employee names and salaries from the database
+   * and prints how much each would like to earn instead:
+   * ```cxx
+   *   tx.exec("SELECT name, salary FROM employee").for_each(
+   *       [](std::string_view name, float salary){
+   *           std::cout << name << " would like " << salary * 2 << ".\n";
+   *       })
+   * ```
+   *
+   * If `func` throws an exception, processing stops at that point and
+   * propagates the exception.
+   *
+   * @throws pqxx::usage_error if `func`'s number of parameters does not match
+   * the number of columns in this result.
+   */
+  template<typename CALLABLE> inline void for_each(CALLABLE &&func) const;
 
 private:
   using data_pointer = std::shared_ptr<internal::pq::PGresult const>;
@@ -266,10 +302,9 @@ private:
   static std::string const s_empty_string;
 
   friend class pqxx::field;
-  // TODO: noexcept.  Breaks ABI.
-  PQXX_PURE char const *get_value(size_type row, row_size_type col) const;
-  // TODO: noexcept.  Breaks ABI.
-  PQXX_PURE bool get_is_null(size_type row, row_size_type col) const;
+  PQXX_PURE char const *
+  get_value(size_type row, row_size_type col) const noexcept;
+  PQXX_PURE bool get_is_null(size_type row, row_size_type col) const noexcept;
   PQXX_PURE
   field_size_type get_length(size_type, row_size_type) const noexcept;
 
@@ -282,10 +317,16 @@ private:
 
   friend class pqxx::internal::gate::result_connection;
   friend class pqxx::internal::gate::result_row;
-  bool operator!() const noexcept { return m_data.get() == nullptr; }
-  operator bool() const noexcept { return m_data.get() != nullptr; }
+  bool operator!() const noexcept
+  {
+    return m_data.get() == nullptr;
+  }
+  operator bool() const noexcept
+  {
+    return m_data.get() != nullptr;
+  }
 
-  [[noreturn]] PQXX_PRIVATE void
+  [[noreturn]] PQXX_PRIVATE PQXX_COLD void
   throw_sql_error(std::string const &Err, std::string const &Query) const;
   PQXX_PRIVATE PQXX_PURE int errorposition() const;
   PQXX_PRIVATE std::string status_error() const;

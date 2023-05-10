@@ -23,24 +23,21 @@ if(NOT PostgreSQL_FOUND)
         cmake_policy(SET CMP0074 NEW)
     endif()
 
-    find_package(PostgreSQL REQUIRED)
+    find_package(PostgreSQL)
 
     if(POLICY CMP0074)
         cmake_policy(POP)
     endif()
 endif()
 
+if(NOT PostgreSQL_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PostgreSQL REQUIRED libpq)
+endif()
+
 check_function_exists("poll" PQXX_HAVE_POLL)
 
 set(CMAKE_REQUIRED_LIBRARIES pq)
-check_symbol_exists(
-	PQencryptPasswordConn
-	"${PostgreSQL_INCLUDE_DIR}/libpq-fe.h"
-	PQXX_HAVE_PQENCRYPTPASSWORDCONN)
-check_symbol_exists(
-	PQenterPipelineMode
-	"${PostgreSQL_INCLUDE_DIR}/libpq-fe.h"
-	PQXX_HAVE_PQ_PIPELINE)
 
 cmake_determine_compile_features(CXX)
 cmake_policy(SET CMP0057 NEW)
@@ -118,6 +115,10 @@ try_compile(
 	PQXX_HAVE_CMP
 	${PROJECT_BINARY_DIR}
 	SOURCES ${PROJECT_SOURCE_DIR}/config-tests/cmp.cxx)
+try_compile(
+	PQXX_HAVE_UNREACHABLE
+	${PROJECT_BINARY_DIR}
+	SOURCES ${PROJECT_SOURCE_DIR}/config-tests/unreachable.cxx)
 
 try_compile(
 	need_fslib

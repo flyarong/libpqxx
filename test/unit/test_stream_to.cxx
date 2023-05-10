@@ -9,6 +9,9 @@
 
 namespace
 {
+using namespace std::literals;
+
+
 std::string truncate_sql_error(std::string const &what)
 {
   auto trunc{what.substr(0, what.find('\n'))};
@@ -51,6 +54,7 @@ void test_nonoptionals(pqxx::connection &connection)
   PQXX_CHECK_EQUAL(r2[4].as<std::string>(), nonascii, "Wrong non-ascii text.");
   tx.commit();
 }
+
 
 void test_nonoptionals_fold(pqxx::connection &connection)
 {
@@ -436,10 +440,98 @@ void test_stream_to_quotes_arguments()
 }
 
 
+void test_stream_to_optionals()
+{
+  pqxx::connection conn;
+  pqxx::work tx{conn};
+
+  tx.exec0("CREATE TEMP TABLE pqxx_strings(key integer, value varchar)");
+
+  auto stream{pqxx::stream_to::table(tx, {"pqxx_strings"}, {"key", "value"})};
+  stream.write_values(1, std::optional<std::string>{});
+  stream.write_values(2, std::optional<std::string_view>{});
+  stream.write_values(3, std::optional<pqxx::zview>{});
+  stream.write_values(4, std::optional<std::string>{"Opt str."});
+  stream.write_values(5, std::optional<std::string_view>{"Opt sv."});
+  stream.write_values(6, std::optional<pqxx::zview>{"Opt zv."});
+
+  stream.write_values(7, std::shared_ptr<std::string>{});
+  stream.write_values(8, std::shared_ptr<std::string_view>{});
+  stream.write_values(9, std::shared_ptr<pqxx::zview>{});
+  stream.write_values(10, std::make_shared<std::string>("Shared str."));
+  stream.write_values(11, std::make_shared<std::string_view>("Shared sv."));
+  stream.write_values(12, std::make_shared<pqxx::zview>("Shared zv."));
+
+  stream.write_values(13, std::unique_ptr<std::string>{});
+  stream.write_values(14, std::unique_ptr<std::string_view>{});
+  stream.write_values(15, std::unique_ptr<pqxx::zview>{});
+  stream.write_values(16, std::make_unique<std::string>("Uq str."));
+  stream.write_values(17, std::make_unique<std::string_view>("Uq sv."));
+  stream.write_values(18, std::make_unique<pqxx::zview>("Uq zv."));
+  stream.complete();
+
+  std::string nulls;
+  for (auto [key] : tx.query<int>(
+         "SELECT key FROM pqxx_strings WHERE value IS NULL ORDER BY key"))
+    nulls += pqxx::to_string(key) + '.';
+  PQXX_CHECK_EQUAL(
+    nulls, "1.2.3.7.8.9.13.14.15.", "Unexpected list of nulls.");
+
+  std::string values;
+  for (auto [value] :
+       tx.query<std::string>("SELECT value FROM pqxx_strings WHERE value IS "
+                             "NOT NULL ORDER BY key"))
+    values += value;
+  PQXX_CHECK_EQUAL(
+    values,
+    "Opt str.Opt sv.Opt zv.Shared str.Shared sv.Shared zv.Uq str.Uq sv.Uq zv.",
+    "Unexpected list of values.");
+}
+
+
+void test_stream_to_escaping()
+{
+  pqxx::connection conn;
+  pqxx::work tx{conn};
+
+  tx.exec0("CREATE TEMP TABLE foo (i integer, t varchar)");
+
+  // We'll check that streaming these strings to the database and querying them
+  // back reproduces them faithfully.
+  std::string_view const inputs[] = {
+    ""sv,      "hello"sv,    "a\tb"sv, "a\nb"sv,
+    "don't"sv, "\\\\\\''"sv, "\\N"sv,  "\\Nfoo"sv,
+  };
+
+  // Stream the input strings into the databsae.
+  pqxx::stream_to out{pqxx::stream_to::table(tx, {"foo"}, {"i", "t"})};
+  for (std::size_t i{0}; i < std::size(inputs); ++i)
+    out.write_values(i, inputs[i]);
+  out.complete();
+
+  // Verify.
+  auto outputs{tx.exec("SELECT i, t FROM foo ORDER BY i")};
+  PQXX_CHECK_EQUAL(
+    static_cast<std::size_t>(std::size(outputs)), std::size(inputs),
+    "Wrong number of rows came back.");
+  for (std::size_t i{0}; i < std::size(inputs); ++i)
+  {
+    int idx{static_cast<int>(i)};
+    PQXX_CHECK_EQUAL(
+      outputs[idx][0].as<std::size_t>(), i, "Unexpected index.");
+    PQXX_CHECK_EQUAL(
+      outputs[idx][1].as<std::string_view>(), inputs[i],
+      "String changed in transit.");
+  }
+}
+
+
 PQXX_REGISTER_TEST(test_stream_to);
 PQXX_REGISTER_TEST(test_container_stream_to);
 PQXX_REGISTER_TEST(test_stream_to_does_nonnull_optional);
 PQXX_REGISTER_TEST(test_stream_to_factory_with_static_columns);
 PQXX_REGISTER_TEST(test_stream_to_factory_with_dynamic_columns);
 PQXX_REGISTER_TEST(test_stream_to_quotes_arguments);
+PQXX_REGISTER_TEST(test_stream_to_optionals);
+PQXX_REGISTER_TEST(test_stream_to_escaping);
 } // namespace

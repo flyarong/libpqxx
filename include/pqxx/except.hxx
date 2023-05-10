@@ -4,7 +4,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/except instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -187,6 +187,13 @@ struct PQXX_LIBEXPORT argument_error : std::invalid_argument
 struct PQXX_LIBEXPORT conversion_error : std::domain_error
 {
   explicit conversion_error(std::string const &);
+};
+
+
+/// Could not convert null value: target type does not support null.
+struct PQXX_LIBEXPORT unexpected_null : conversion_error
+{
+  explicit unexpected_null(std::string const &);
 };
 
 

@@ -1,25 +1,36 @@
 Building using `configure`
 ==========================
 
-The build requires `libpq`, the C client library for PostgreSQL.  This library
-must be installed before you can build libpqxx.  You'll need the headers as
-well as the library binary.
-
 The instructions will assume that you're working from a command-line shell.
 If you prefer to work from an IDE, you'll have to know how your IDE likes to
 do things, and you'll want to follow the shell instructions as a guide.
 
 
+Prerequisites
+-------------
+
+Before building and installing the `libpqxx` library, you first need to
+install the `libpq` library. This is the official C client library for
+PostgreSQL that allows `libpqxx` to communicate with the database backend
+server. Methods for installing the `libpq` library will vary depending
+on your operating system and individual setup.
+
+
 Quick start
 -----------
 
-If you just want to get it built and installed quickly, try:
+Once you have downloaded the `libpqxx` source code, you can build and
+install it quickly by entering the following commands:
 
 ```shell
-    ./configure
+    ./configure --disable-shared
     make
     sudo make install
 ```
+
+This installation automatically places the `libpqxx` libraries in the
+appropriate locations for your system. If you wish, you may delete the
+downloaded folder after the installation process completes.
 
 Want more detail?  Read on.
 
@@ -29,6 +40,7 @@ Stages
 
 I'll explain the main build steps in more detail below, but here's a quick
 overview:
+
 1. Configure
 2. Compile
 3. Test
@@ -70,6 +82,7 @@ the output of `configure --help`.  I'll also explain the two directories.
 ### Cheat sheet
 
 Here are some popular `configure` options:
+
 * `--disable-documentation` skips building of the documentation.
 * `CXXFLAGS=-O0` disables optimisation.  Slower code, but faster build.
 * `CXXFLAGS=-O3` asks for _more_ optimisation.  Faster code, slower build.
@@ -107,6 +120,7 @@ of mistakes in the code, such as occasionally-unused variables.)
 
 One of `configure`'s most important jobs in the libpqxx build is to find the
 headers and library for libpq.  It has three ways of finding those:
+
 1. Asking a popular tool called `pkg-config`, if installed.
 2. Asking postgres' deprecated `pg_config` tool, if installed.
 3. Through explicit command-line options to `configure`.
@@ -217,6 +231,7 @@ You can set these parameters for the test suite, or for any other libpq-based
 application, using the following environment variables.  (They only set default
 values, so they won't override parameters that the application sets in some
 other way.)
+
 * `PGHOST` — the IP address where we can contact the database's socket.  Or
   for a Unix domain socket, its absolute path on the filesystem.
 * `PGPORT` —
@@ -224,11 +239,14 @@ other way.)
 * `PGUSER` — user name under which you wish to log in on the database.
 * `PGPASSWORD` — user name's password for accessing the database.
 
-See the full list at https://www.postgresql.org/docs/current/libpq-envars.html
+See the full list at [
+    https://www.postgresql.org/docs/current/libpq-envars.html
+](https://www.postgresql.org/docs/current/libpq-envars.html).
 
 **Be careful with passwords,** by the way.  Depending on your operating system
 and configuration, an attacker with access to your machine could try to read
 your password if you set it on the command line:
+
 * Your shell may keep a log of the commands you have entered.
 * Environment variables may be visible to other users on the system.
 

@@ -3,7 +3,7 @@
  * pqxx::transaction_base defines the interface for any abstract class that
  * represents a database transaction.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -125,7 +125,7 @@ void pqxx::transaction_base::commit()
     throw in_doubt_error{internal::concat(
       description(), " committed again while in an indeterminate state.")};
 
-  default: throw internal_error{"pqxx::transaction: invalid status code."};
+  default: PQXX_UNREACHABLE;
   }
 
   // Tricky one.  If stream is nested in transaction but inside the same scope,
@@ -204,7 +204,7 @@ void pqxx::transaction_base::abort()
       "it may have been executed anyway.\n"));
     return;
 
-  default: throw internal_error{"Invalid transaction status."};
+  default: PQXX_UNREACHABLE;
   }
 
   m_status = status::aborted;
@@ -233,7 +233,7 @@ public:
     register_me();
   }
 
-  ~command() { unregister_me(); }
+  ~command() noexcept { unregister_me(); }
 };
 } // namespace
 
@@ -258,7 +258,7 @@ pqxx::transaction_base::exec(std::string_view query, std::string_view desc)
       "Could not execute command ", n, ": transaction is already closed.")};
   }
 
-  default: throw internal_error{"pqxx::transaction: invalid status code."};
+  default: PQXX_UNREACHABLE;
   }
 
   return direct_exec(query, desc);
@@ -268,7 +268,9 @@ pqxx::transaction_base::exec(std::string_view query, std::string_view desc)
 pqxx::result pqxx::transaction_base::exec_n(
   result::size_type rows, zview query, std::string_view desc)
 {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
   result const r{exec(query, desc)};
+#include "pqxx/internal/ignore-deprecated-post.hxx"
   if (std::size(r) != rows)
   {
     std::string const N{

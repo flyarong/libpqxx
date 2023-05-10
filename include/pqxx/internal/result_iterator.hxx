@@ -4,7 +4,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/result instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -66,11 +66,17 @@ public:
    */
   //@{
   /// Dereference the iterator.
-  [[nodiscard]] pointer operator->() const { return this; }
+  [[nodiscard]] pointer operator->() const
+  {
+    return this;
+  }
 
 #include "pqxx/internal/ignore-deprecated-pre.hxx"
   /// Dereference the iterator.
-  [[nodiscard]] reference operator*() const { return *this; }
+  [[nodiscard]] reference operator*() const
+  {
+    return *this;
+  }
 #include "pqxx/internal/ignore-deprecated-post.hxx"
   //@}
 

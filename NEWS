@@ -1,5 +1,54 @@
+7.8.0
+ - Streaming large data sets now benchmarks faster than similar C/libpq code!
+ - New `array` class for easier parsing of SQL arrays.
+ - Deprecating `stream_from`.  Use `transaction_base::stream()`.
+ - Use `array_parser` only on comma-separated types, i.e. most of them. (#590)
+ - Bumping requirements versions: need postgres 10.
+ - Fix `array_parser` bug when parsing semicolon in an unquoted string.
+ - Make some `zview` constructors `noexcept` if `string_view` does it.
+ - Handle result status code for starting streaming replication.  (#631)
+ - Faster text decoding and escaping in data streaming.  (#601)
+ - Deprecate `basic_fieldstream` and `fieldstream`.
+ - Deprecate `<<` operator inserting a field into an `ostream`.
+ - New string conversion fields: `converts_to_string` & `converts_from_string`.
+ - Ran `autoupdate` (because the autotools told me to).
+ - Documentation tweak. (#584)
+ - Typo in README.md. (#586)
+ - Support `std::optional<std::string_view>` etc. in `stream_to`. (#596)
+ - Remove support for single-quoted array/composite elements.  No such thing!
+ - Optimise out a kink in composite field parser.`
+ - Work around build warning in MinGW: include `winsock2.h` before `windows.h`.
+ - Drop some redundant encoding groups.
+ - If CMake can't find libpq, fall back to pkg-config. (#664)
+ - Work around spurious compile error on g++ pre-gcc-10. (#665)
+ - Include `<pqxx/range>` and `<pqxx/time>` headers in `<pqxx/pqxx>`. (#667)
+ - Don't use `std::function` as deleter for smart pointers.
+ - Work around gcc compile error with regex + address sanitizer + analyzers.
+ - Fix "double free" on exit when built as shared library on Debian. (#681)
+ - Stop including `<ciso646>`; should be built into compilers. (#680)
+7.7.4
+ - `transaction_base::for_each()` is now called `for_stream()`. (#580)
+ - New `transaction_base::for_query()` is similar, but non-streaming. (#580)
+ - Query data and iterate directly as client-side types: `query()`. (#580)
+ - New ways to query a single row!  `query01()` and `query1()`. (#580)
+ - We now have 3 kinds of execution: "exec", "query", and "stream" functions.
+ - Use C++23 `std::unreachable()` where available.
+ - `result::iter()` return value now keeps its `result` alive.
+7.7.3
+ - Fix up more damage done by auto-formatting.
+ - New `result::for_each()`: simple iteration and conversion of rows.  (#528)
+ - Add some missing headers in `<pqxx/pqxx>`.  (#551)
+ - More strictness in `header-pre.hxx`/`header-post.hxx` checking.
+ - Disallow nesting of `ignore-deprecated` blocks.
+ - Deprecate `exec` functions' `desc` parameter.
+ - Fix `placeholders` documentation.  (#557)
+ - Strip `const` and references from `value_type`. (#558)
+ - Get tests running on appveyor. (#560)
+ - Fix broken nonblocking connection on Windows. (#560)
+7.7.2
+ - Fix up damage done by auto-formatting.
 7.7.1
- - Don't try to set C++ version in `configure`.  User can set compiler options.
+ - When you build libpqxx, configure the compiler's C++ version yourself!
  - Finally fix a long-standing silly warning in autogen.
  - Fix `digit_to_number` not being found on some comilers.  (#518, #519)
  - In audit mode, define `_FORTIFY_SOURCE` to enable some extra checks.

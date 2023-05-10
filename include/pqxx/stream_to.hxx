@@ -4,7 +4,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/stream_to.hxx instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -270,8 +270,8 @@ private:
   /// Reusable buffer for converting/escaping a field.
   std::string m_field_buf;
 
-  /// Glyph scanner, for parsing the client encoding.
-  internal::glyph_scanner_func *m_scanner;
+  /// Callback to find the special characters we need to watch out for.
+  internal::char_finder_func *m_finder;
 
   /// Write a row of raw text-format data into the destination table.
   void write_raw_line(std::string_view);
@@ -357,6 +357,31 @@ private:
         // This string may need escaping.
         m_field_buf.resize(budget);
         escape_field_to_buffer(f);
+      }
+      else if constexpr (
+        std::is_same_v<Field, std::optional<std::string>> or
+        std::is_same_v<Field, std::optional<std::string_view>> or
+        std::is_same_v<Field, std::optional<zview>>)
+      {
+        // Optional string.  It's not null (we checked for that above), so...
+        // Treat like a string.
+        m_field_buf.resize(budget);
+        escape_field_to_buffer(f.value());
+      }
+      // TODO: Support deleter template argument on unique_ptr.
+      else if constexpr (
+        std::is_same_v<Field, std::unique_ptr<std::string>> or
+        std::is_same_v<Field, std::unique_ptr<std::string_view>> or
+        std::is_same_v<Field, std::unique_ptr<zview>> or
+        std::is_same_v<Field, std::shared_ptr<std::string>> or
+        std::is_same_v<Field, std::shared_ptr<std::string_view>> or
+        std::is_same_v<Field, std::shared_ptr<zview>>)
+      {
+        // TODO: Can we generalise this elegantly without Concepts?
+        // Effectively also an optional string.  It's not null (we checked
+        // for that above).
+        m_field_buf.resize(budget);
+        escape_field_to_buffer(*f);
       }
       else
       {

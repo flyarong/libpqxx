@@ -5,7 +5,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/transaction_base instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -19,7 +19,6 @@
 #endif
 
 #include <string_view>
-#include <utility>
 
 /* End-user programs need not include this file, unless they define their own
  * transaction classes.  This is not something the typical program should want
@@ -33,10 +32,11 @@
 #include "pqxx/connection.hxx"
 #include "pqxx/internal/concat.hxx"
 #include "pqxx/internal/encoding_group.hxx"
+#include "pqxx/internal/stream_query.hxx"
 #include "pqxx/isolation.hxx"
 #include "pqxx/result.hxx"
 #include "pqxx/row.hxx"
-#include "pqxx/stream_from.hxx"
+#include "pqxx/util.hxx"
 
 namespace pqxx::internal::gate
 {
@@ -62,9 +62,20 @@ class transaction_focus;
  * However, not all implementations of this interface need to provide full
  * transactional integrity.
  *
- * Several implementations of this interface are shipped with libpqxx,
- * including the plain transaction class, the entirely unprotected
- * nontransaction, and the more cautious robusttransaction.
+ * You'll find several implementations of this interface in libpqxx, including
+ * the plain @ref transaction class, the entirely unprotected
+ * @ref nontransaction, and the more cautious @ref robusttransaction.
+ *
+ * Like most other things in libpqxx, transactions follow RAII principles:
+ * creating a transaction object means to start the transaction, and to destroy
+ * it means to end the transaction.  But there's one extra step: if you want to
+ * make the transaction's changes permanent, you need to _commit_ it at the
+ * end.  If you destroy the transaction object without committing it, or if you
+ * call its `abort()` member function, then the transaction will roll back its
+ * effects instead.
+ *
+ * The big exception to all this is @ref nontransaction.  It gives you the
+ * transaction API but without actually starting a transaction on the database.
  */
 
 /// Interface definition (and common code) for "transaction" classes.
@@ -234,19 +245,41 @@ public:
    * @name Command execution
    *
    * There are many functions for executing (or "performing") a command (or
-   * "query").  This is the most fundamental thing you can do with the library,
-   * and you always do it from a transaction class.
+   * "query").  This is the most fundamental thing you can do in libpqxx, and
+   * it always starts at a transaction class.
    *
    * Command execution can throw many types of exception, including sql_error,
    * broken_connection, and many sql_error subtypes such as
    * feature_not_supported or insufficient_privilege.  But any exception thrown
    * by the C++ standard library may also occur here.  All exceptions you will
-   * see libpqxx are derived from std::exception.
+   * see libpqxx throw are derived from std::exception.
    *
-   * One unusual feature in libpqxx is that you can give your query a name or
-   * description.  This does not mean anything to the database, but sometimes
-   * it can help libpqxx produce more helpful error messages, making problems
-   * in your code easier to debug.
+   * Most of the differences between the query execution functions are in how
+   * they return the query's results.
+   *
+   * * The "query" functions run your query, wait for it to complete, and load
+   *   all of the results into memory on the client side.  You can then access
+   *   rows of result data, converted to C++ types that you request.
+   * * The "stream" functions execute your query in a completely different way.
+   *   Called _streaming queries,_ these don't support quite the full range of
+   *   SQL queries, and they're a bit slower to start.  But they are
+   *   significantly *   _faster_ for queries that return larger numbers of
+   *   rows.  They don't load the entire result set, so you can start
+   *   processing data as soon as the first row of data comes in from the
+   *   database.  This can save you a lot of time.  Processing itself may also
+   *   be faster.  And of course, it also means you don't need enough memory to
+   *   hold the entire result set, just the row you're working on.
+   * * The "exec" functions are a more low-level interface.  Most of them
+   *   return a pqxx::result object.  This is an object that contains all
+   *   information abouut the query's result: the data itself, but also the
+   *   number of rows in the result, the column names, the number of rows that
+   *   your query may have modified, and so on.
+   *
+   * Some of these functions also give you the option to specify how many rows
+   * of data you expect to get: `exec0()` reports a failure if the query
+   * returns any rows of data at all, `exec1()` expects a single row of data
+   * (and so returns a pqxx::row rather than a pqxx::result), `exec_n()` lets
+   * you specify the number of rows you expect, and so on.
    */
   //@{
 
@@ -256,8 +289,20 @@ public:
    * @param desc Optional identifier for query, to help pinpoint SQL errors.
    * @return A result set describing the query's or command's result.
    */
-  result
-  exec(std::string_view query, std::string_view desc = std::string_view{});
+  [[deprecated("The desc parameter is going away.")]] result
+  exec(std::string_view query, std::string_view desc);
+
+  /// Execute a command.
+  /**
+   * @param query Query or command to execute.
+   * @return A result set describing the query's or command's result.
+   */
+  result exec(std::string_view query)
+  {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
+    return exec(query, std::string_view{});
+#include "pqxx/internal/ignore-deprecated-post.hxx"
+  }
 
   /// Execute a command.
   /**
@@ -265,10 +310,13 @@ public:
    * @param desc Optional identifier for query, to help pinpoint SQL errors.
    * @return A result set describing the query's or command's result.
    */
-  result exec(
-    std::stringstream const &query, std::string_view desc = std::string_view{})
+  [[deprecated(
+    "Pass your query as a std::string_view, not stringstream.")]] result
+  exec(std::stringstream const &query, std::string_view desc)
   {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
     return exec(query.str(), desc);
+#include "pqxx/internal/ignore-deprecated-post.hxx"
   }
 
   /// Execute command, which should return zero rows of data.
@@ -277,9 +325,23 @@ public:
    *
    * @throw unexpected_rows If the query returned the wrong number of rows.
    */
-  result exec0(zview query, std::string_view desc = std::string_view{})
+  [[deprecated("The desc parameter is going away.")]] result
+  exec0(zview query, std::string_view desc)
   {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
     return exec_n(0, query, desc);
+#include "pqxx/internal/ignore-deprecated-post.hxx"
+  }
+
+  /// Execute command, which should return zero rows of data.
+  /** Works like @ref exec, but fails if the result contains data.  It still
+   * returns a result, however, which may contain useful metadata.
+   *
+   * @throw unexpected_rows If the query returned the wrong number of rows.
+   */
+  result exec0(zview query)
+  {
+    return exec_n(0, query);
   }
 
   /// Execute command returning a single row of data.
@@ -289,9 +351,24 @@ public:
    *
    * @throw unexpected_rows If the query returned the wrong number of rows.
    */
-  row exec1(zview query, std::string_view desc = std::string_view{})
+  [[deprecated("The desc parameter is going away.")]] row
+  exec1(zview query, std::string_view desc)
   {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
     return exec_n(1, query, desc).front();
+#include "pqxx/internal/ignore-deprecated-post.hxx"
+  }
+
+  /// Execute command returning a single row of data.
+  /** Works like @ref exec, but requires the result to contain exactly one row.
+   * The row can be addressed directly, without the need to find the first row
+   * in a result set.
+   *
+   * @throw unexpected_rows If the query returned the wrong number of rows.
+   */
+  row exec1(zview query)
+  {
+    return exec_n(1, query).front();
   }
 
   /// Execute command, expect given number of rows.
@@ -300,22 +377,90 @@ public:
    *
    * @throw unexpected_rows If the query returned the wrong number of rows.
    */
-  result exec_n(
-    result::size_type rows, zview query,
-    std::string_view desc = std::string_view{});
+  [[deprecated("The desc parameter is going away.")]] result
+  exec_n(result::size_type rows, zview query, std::string_view desc);
+
+  /// Execute command, expect given number of rows.
+  /** Works like @ref exec, but checks that the result has exactly the expected
+   * number of rows.
+   *
+   * @throw unexpected_rows If the query returned the wrong number of rows.
+   */
+  result exec_n(result::size_type rows, zview query)
+  {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
+    return exec_n(rows, query, std::string_view{});
+#include "pqxx/internal/ignore-deprecated-post.hxx"
+  }
 
   /// Perform query, expecting exactly 1 row with 1 field, and convert it.
   /** This is convenience shorthand for querying exactly one value from the
    * database.  It returns that value, converted to the type you specify.
    */
   template<typename TYPE>
-  TYPE query_value(zview query, std::string_view desc = std::string_view{})
+  [[deprecated("The desc parameter is going away.")]] TYPE
+  query_value(zview query, std::string_view desc)
   {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
     row const r{exec1(query, desc)};
+#include "pqxx/internal/ignore-deprecated-post.hxx"
     if (std::size(r) != 1)
       throw usage_error{internal::concat(
         "Queried single value from result with ", std::size(r), " columns.")};
     return r[0].as<TYPE>();
+  }
+
+  /// Perform query, expecting exactly 1 row with 1 field, and convert it.
+  /** This is convenience shorthand for querying exactly one value from the
+   * database.  It returns that value, converted to the type you specify.
+   *
+   * @throw unexpected_rows If the query did not return exactly 1 row.
+   * @throw usage_error If the row did not contain exactly 1 field.
+   */
+  template<typename TYPE> TYPE query_value(zview query)
+  {
+    row const r{exec1(query)};
+    if (std::size(r) != 1)
+      throw usage_error{internal::concat(
+        "Queried single value from result with ", std::size(r), " columns.")};
+    return r[0].as<TYPE>();
+  }
+
+  /// Perform query returning exactly one row, and convert its fields.
+  /** This is a convenient way of querying one row's worth of data, and
+   * converting its fields to a tuple of the C++-side types you specify.
+   *
+   * @throw unexpected_rows If the query did not return exactly 1 row.
+   * @throw usage_error If the number of columns in the result does not match
+   * the number of fields in the tuple.
+   */
+  template<typename... TYPE>
+  [[nodiscard]] std::tuple<TYPE...> query1(zview query)
+  {
+    return exec1(query).as<TYPE...>();
+  }
+
+  /// Query at most one row of data, and if there is one, convert it.
+  /** If the query produced a row of data, this converts it to a tuple of the
+   * C++ types you specify.  Otherwise, this returns no tuple.
+   *
+   * @throw unexpected_rows If the query returned more than 1 row.
+   * @throw usage_error If the number of columns in the result does not match
+   * the number of fields in the tuple.
+   */
+  template<typename... TYPE>
+  [[nodiscard]] std::optional<std::tuple<TYPE...>> query01(zview query)
+  {
+    result res{exec(query)};
+    auto const rows{std::size(res)};
+    switch (rows)
+    {
+    case 0: return {};
+    case 1: return {res[0].as<TYPE...>()};
+    default:
+      throw unexpected_rows{internal::concat(
+        "Expected at most one row of data, got "sv, rows, "."sv)};
+    }
   }
 
   /// Execute a query, and loop over the results row by row.
@@ -323,57 +468,160 @@ public:
    *
    * Use this with a range-based "for" loop.  It executes the query, and
    * directly maps the resulting rows onto a `std::tuple` of the types you
-   * specify.  It starts before all the data from the server is in, so if your
-   * network connection to the server breaks while you're iterating, you'll get
-   * an exception partway through.
-   *
-   * The stream lives entirely within the lifetime of the transaction.  Make
-   * sure you destroy the stream before you destroy the transaction.  Also,
-   * either iterate the stream all the way to the end, or destroy first the
-   * stream and then the transaction without touching either in any other way.
-   * Until the stream has finished, the transaction is in a special state where
-   * it cannot execute queries.
+   * specify.  Unlike with the "exec" functions, processing can start before
+   * all the data from the server is in.
    *
    * As a special case, tuple may contain `std::string_view` fields, but the
    * strings to which they point will only remain valid until you extract the
    * next row.  After that, the memory holding the string may be overwritten or
    * deallocated.
    *
-   * If any of the columns can be null, and the C++ type to which it translates
-   * does not have a null value, wrap the type in `std::optional` (or if
-   * you prefer, `std::shared_ptr` or `std::unique_ptr)`.  These templates
-   * do recognise null values, and libpqxx will know how to convert to them.
+   * If any of the columns can be null, and the C++ type to which you're
+   * translating it does not have a null value, wrap the type in a
+   * `std::optional<>` (or if you prefer, a `std::shared_ptr<>` or a
+   * `std::unique_ptr`).  These templates do support null values, and libpqxx
+   * will know how to convert to them.
    *
-   * The connection is in a special state until the iteration finishes.  So if
-   * it does not finish due to a `break` or a `return` or an exception, then
-   * the entire connection becomes effectively unusable.
+   * The stream lives entirely within the lifetime of the transaction.  Make
+   * sure you complete the stream before you destroy the transaction.  Until
+   * the stream has finished, the transaction and the connection are in a
+   * special state where they cannot be used for anything else.
    *
-   * Querying in this way is faster than the `exec()` methods for larger
-   * results (but probably slower for small ones).  Also, you can start
-   * processing rows before the full result is in.  Also, `stream()` scales
-   * better in terms of memory usage.  Where @ref exec() reads the entire
-   * result into memory at once, `stream()` will read and process one row at at
-   * a time.
+   * @warning If the stream fails, you will have to destroy the transaction
+   * and the connection.  If this is a problem, use the "exec" functions
+   * instead.
+   *
+   * Streaming your query is likely to be faster than the `exec()` methods for
+   * larger results (but slower for small results), and start useful processing
+   * sooner.  Also, `stream()` scales better in terms of memory usage: it only
+   * needs to keep the current row in memory.  The "exec" functions read the
+   * entire result into memory at once.
    *
    * Your query executes as part of a COPY command, not as a stand-alone query,
    * so there are limitations to what you can do in the query.  It can be
    * either a SELECT or VALUES query; or an INSERT, UPDATE, or DELETE with a
-   * RETURNING clause.  See the documentation for PostgreSQL's COPY command for
-   * the details:
-   *
-   *     https://www.postgresql.org/docs/current/sql-copy.html
+   * RETURNING clause.  See the documentation for PostgreSQL's
+   * [COPY command](https://www.postgresql.org/docs/current/sql-copy.html) for
+   * the exact restrictions.
    *
    * Iterating in this way does require each of the field types you pass to be
    * default-constructible, copy-constructible, and assignable.  These
-   * requirements may be loosened once libpqxx moves on to C++20.
+   * requirements may loosen a bit once libpqxx moves on to C++20.
    */
   template<typename... TYPE>
   [[nodiscard]] auto stream(std::string_view query) &
   {
-    // Tricky: std::make_unique() supports constructors but not RVO functions.
-    return pqxx::internal::owning_stream_input_iteration<TYPE...>{
-      std::unique_ptr<stream_from>{
-        new stream_from{stream_from::query(*this, query)}}};
+    return pqxx::internal::stream_query<TYPE...>{*this, query};
+  }
+
+  // C++20: Concept like std::invocable, but without specifying param types.
+  /// Perform a streaming query, and for each result row, call `func`.
+  /** Here, `func` can be a function, a `std::function`, a lambda, or an
+   * object that supports the function call operator.  Of course `func` must
+   * have an unambiguous signature; it can't be overloaded or generic.
+   *
+   * The `for_stream` function executes `query` in a stream similar to
+   * @ref stream.  Every time a row of data comes in from the server, it
+   * converts the row's fields to the types of `func`'s respective parameters,
+   * and calls `func` with those values.
+   *
+   * This will not work for all queries, but straightforward `SELECT` and
+   * `UPDATE ... RETURNING` queries should work.  Consult the documentation for
+   * @ref pqxx::internal::stream_query and PostgreSQL's underlying `COPY`
+   * command for the full details.
+   *
+   * Streaming a query like this is likely to be slower than the @ref exec()
+   * functions for small result sets, but faster for larger result sets.  So if
+   * performance matters, you'll want to use `for_stream` if you query large
+   * amounts of data, but not if you do lots of queries with small outputs.
+   *
+   * However, the transaction and the connection are in a special state while
+   * the iteration is ongoing.  If `func` throws an exception, or the iteration
+   * fails in some way, the only way out is to destroy the transaction and the
+   * connection.
+   */
+  template<typename CALLABLE>
+  auto for_stream(std::string_view query, CALLABLE &&func)
+  {
+    using param_types =
+      pqxx::internal::strip_types_t<pqxx::internal::args_t<CALLABLE>>;
+    param_types const *const sample{nullptr};
+    auto data_stream{stream_like(query, sample)};
+    for (auto const &fields : data_stream) std::apply(func, fields);
+  }
+
+  template<typename CALLABLE>
+  [[deprecated(
+    "pqxx::transaction_base::for_each is now called for_stream.")]] auto
+  for_each(std::string_view query, CALLABLE &&func)
+  {
+    return for_stream(query, std::forward<CALLABLE>(func));
+  }
+
+  /// Execute query, read full results, then iterate rows of data.
+  /** Converts each row of the result to a `std::tuple` of the types you pass
+   * as template arguments.  (The number of template arguments must match the
+   * number of columns in the query's result.)
+   *
+   * Example:
+   *
+   * ```cxx
+   *     for (
+   *         auto [name, salary] :
+   *             tx.query<std::string_view, int>(
+   *                 "SELECT name, salary FROM employee"
+                 )
+   *     )
+   *         std::cout << name << " earns " << salary << ".\n";
+   * ```
+   *
+   * You can't normally convert a field value to `std::string_view`, but this
+   * is one of the places where you can.  The underlying string to which the
+   * `string_view` points exists only for the duration of the one iteration.
+   * After that, the buffer that holds the actual string may have disappeared,
+   * or it may contain a new string value.
+   *
+   * If you expect a lot of rows from your query, it's probably faster to use
+   * transaction_base::stream() instead.  Or if you need to access metadata of
+   * the result, such as the number of rows in the result, or the number of
+   * rows that your query updates, then you'll need to use
+   * transaction_base::exec() instead.
+   *
+   * @return Something you can iterate using "range `for`" syntax.  The actual
+   * type details may change.
+   */
+  template<typename... TYPE> auto query(zview query)
+  {
+    return exec(query).iter<TYPE...>();
+  }
+
+  /// Perform query, expect given number of rows, iterate results.
+  /** Works like @ref query, but checks that the result has exactly the
+   * expected number of rows.
+   *
+   * @throw unexpected_rows If the query returned the wrong number of rows.
+   *
+   * @return Something you can iterate using "range `for`" syntax.  The actual
+   * type details may change.
+   */
+  template<typename... TYPE> auto query_n(result::size_type rows, zview query)
+  {
+    return exec_n(rows, query).iter<TYPE...>();
+  }
+
+  // C++20: Concept like std::invocable, but without specifying param types.
+  /// Execute a query, load the full result, and perform `func` for each row.
+  /** Converts each row to data types matching `func`'s parameter types.  The
+   * number of columns in the result set must match the number of parameters.
+   *
+   * This is a lot like for_stream().  The differences are:
+   * 1. It can execute some unusual queries that for_stream() can't.
+   * 2. The `exec` functions are faster for small results, but slower for large
+   *    results.
+   */
+  template<typename CALLABLE> void for_query(zview query, CALLABLE &&func)
+  {
+    exec(query).for_each(std::forward<CALLABLE>(func));
   }
 
   /**
@@ -518,13 +766,22 @@ public:
    */
   //@{
   /// Have connection process a warning message.
-  void process_notice(char const msg[]) const { m_conn.process_notice(msg); }
+  void process_notice(char const msg[]) const
+  {
+    m_conn.process_notice(msg);
+  }
   /// Have connection process a warning message.
-  void process_notice(zview msg) const { m_conn.process_notice(msg); }
+  void process_notice(zview msg) const
+  {
+    m_conn.process_notice(msg);
+  }
   //@}
 
   /// The connection in which this transaction lives.
-  [[nodiscard]] constexpr connection &conn() const noexcept { return m_conn; }
+  [[nodiscard]] constexpr connection &conn() const noexcept
+  {
+    return m_conn;
+  }
 
   /// Set session variable using SQL "SET" command.
   /** @deprecated To set a transaction-local variable, execute an SQL `SET`
@@ -555,7 +812,10 @@ public:
 
   // C++20: constexpr.
   /// Transaction name, if you passed one to the constructor; or empty string.
-  [[nodiscard]] std::string_view name() const &noexcept { return m_name; }
+  [[nodiscard]] std::string_view name() const &noexcept
+  {
+    return m_name;
+  }
 
 protected:
   /// Create a transaction (to be called by implementation classes only).
@@ -639,6 +899,13 @@ private:
   PQXX_PRIVATE void register_pending_error(zview) noexcept;
   PQXX_PRIVATE void register_pending_error(std::string &&) noexcept;
 
+  /// Like @ref stream(), but takes a tuple rather than a parameter pack.
+  template<typename... ARGS>
+  auto stream_like(std::string_view query, std::tuple<ARGS...> const *)
+  {
+    return stream<ARGS...>(query);
+  }
+
   connection &m_conn;
 
   /// Current "focus": a pipeline, a nested transaction, a stream...
@@ -698,4 +965,6 @@ template<>
 inline constexpr zview begin_cmd<serializable, write_policy::read_only>{
   "BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY"_zv};
 } // namespace pqxx::internal
+
+#include "pqxx/internal/stream_query_impl.hxx"
 #endif

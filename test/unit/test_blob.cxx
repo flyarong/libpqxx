@@ -420,7 +420,7 @@ namespace
 /** This is just here to stop Visual Studio from advertising its own
  * alternative.
  */
-std::unique_ptr<FILE, std::function<int(FILE *)>>
+std::unique_ptr<FILE, int(*)(FILE *)>
 my_fopen(char const *path, char const *mode)
 {
 #if defined(_MSC_VER)
@@ -456,7 +456,7 @@ void write_file(char const path[], std::basic_string_view<std::byte> data)
       std::fwrite(
         reinterpret_cast<char const *>(data.data()), 1, std::size(data),
         f.get()) < std::size(data))
-      std::runtime_error{"File write failed."};
+      throw std::runtime_error{"File write failed."};
   }
   catch (const std::exception &)
   {

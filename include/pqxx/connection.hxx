@@ -4,7 +4,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/connection instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -19,14 +19,12 @@
 
 #include <cstddef>
 #include <ctime>
-#include <functional>
 #include <initializer_list>
 #include <list>
 #include <map>
 #include <memory>
 #include <string_view>
 #include <tuple>
-#include <utility>
 
 // Double-check in order to suppress an overzealous Visual C++ warning (#418).
 #if defined(PQXX_HAVE_CONCEPTS) && __has_include(<ranges>)
@@ -104,7 +102,7 @@ class connection_largeobject;
 class connection_notification_receiver;
 class connection_pipeline;
 class connection_sql_cursor;
-class connection_stream_from;
+struct connection_stream_from;
 class connection_stream_to;
 class connection_transaction;
 class const_connection_largeobject;
@@ -153,8 +151,10 @@ enum class error_verbosity : int
 
 /// Connection to a database.
 /** This is the first class to look at when you wish to work with a database
- * through libpqxx.  The connection opens during construction, and closes upon
- * destruction.
+ * through libpqxx.  As per RAII principles, the connection opens during
+ * construction, and closes upon destruction.  If the connection attempt fails,
+ * you will not get a @ref connection object; the constructor will fail with a
+ * @ref pqxx::broken_connection exception.
  *
  * When creating a connection, you can pass a connection URI or a postgres
  * connection string, to specify the database server's address, a login
@@ -174,8 +174,9 @@ enum class error_verbosity : int
  * transaction classes (see pqxx/transaction_base.hxx) and perhaps also the
  * transactor framework (see pqxx/transactor.hxx).
  *
- * When a connection breaks, you will typically get a @ref broken_connection
- * exception.  This can happen at almost any point.
+ * When a connection breaks, or fails to establish itself in the first place,
+ * you will typically get a @ref broken_connection exception.  This can happen
+ * at almost any point.
  *
  * @warning On Unix-like systems, including GNU and BSD systems, your program
  * may receive the SIGPIPE signal when the connection to the backend breaks. By
@@ -249,10 +250,10 @@ public:
   connection &operator=(connection const &) = delete;
 
   /// Is this connection open at the moment?
-  /** @warning This function is **not** needed in most code.  Resist the
-   * temptation to check it after opening a connection.  The `connection`
-   * constructor will throw a @ref broken_connection exception if can't connect
-   * to the database.
+  /** @warning Most code does **not** need this function.  Resist the
+   * temptation to check your connection after opening it: if the connection
+   * attempt failed, the constructor will never even return, throwing a
+   * @ref broken_connection exception instead.
    */
   [[nodiscard]] bool PQXX_PURE is_open() const noexcept;
 
@@ -277,16 +278,21 @@ public:
    * The connection needs to be currently active for these to work.
    */
   //@{
-  /// Name of database we're connected to, if any.
+  /// Name of the database to which we're connected, if any.
+  /** Returns nullptr when not connected. */
   [[nodiscard]] char const *dbname() const;
 
-  /// Database user ID we're connected under, if any.
+  /// Database user ID under which we are connected, if any.
+  /** Returns nullptr when not connected. */
   [[nodiscard]] char const *username() const;
 
-  /// Address of server, or nullptr if none specified (i.e. default or local)
+  /// Database server address, if given.
+  /** This may be an IP address, or a hostname, or (for a Unix domain socket)
+   * a socket path.  Returns nullptr when not connected.
+   */
   [[nodiscard]] char const *hostname() const;
 
-  /// Server port number we're connected to.
+  /// Server port number on which we are connected to the database.
   [[nodiscard]] char const *port() const;
 
   /// Process ID for backend process, or 0 if inactive.
@@ -367,7 +373,7 @@ public:
   void set_client_encoding(char const encoding[]) &;
 
   /// Get the connection's encoding, as a PostgreSQL-defined code.
-  [[nodiscard]] int PQXX_PRIVATE encoding_id() const;
+  [[nodiscard]] int encoding_id() const;
 
   //@}
 
@@ -614,7 +620,10 @@ public:
    * else.
    */
   void prepare(char const definition[]) &;
-  void prepare(zview definition) & { return prepare(definition.c_str()); }
+  void prepare(zview definition) &
+  {
+    return prepare(definition.c_str());
+  }
 
   /// Drop prepared statement.
   void unprepare(std::string_view name);
@@ -905,6 +914,10 @@ public:
 
 #if defined(_WIN32) || __has_include(<fcntl.h>)
   /// Set socket to blocking (true) or nonblocking (false).
+  /** @warning Do not use this unless you _really_ know what you're doing.
+   * @warning This function is available on most systems, but not necessarily
+   * all.
+   */
   void set_blocking(bool block) &;
 #endif // defined(_WIN32) || __has_include(<fcntl.h>)
 
@@ -1041,16 +1054,19 @@ private:
   void PQXX_PRIVATE register_transaction(transaction_base *);
   void PQXX_PRIVATE unregister_transaction(transaction_base *) noexcept;
 
-  friend class internal::gate::connection_stream_from;
-  std::pair<std::unique_ptr<char, std::function<void(char *)>>, std::size_t>
-    PQXX_PRIVATE read_copy_line();
+  friend struct internal::gate::connection_stream_from;
+  std::pair<std::unique_ptr<char, void(*)(void const *)>, std::size_t>
+  read_copy_line();
 
   friend class internal::gate::connection_stream_to;
   void PQXX_PRIVATE write_copy_line(std::string_view);
   void PQXX_PRIVATE end_copy_write();
 
   friend class internal::gate::connection_largeobject;
-  internal::pq::PGconn *raw_connection() const { return m_conn; }
+  internal::pq::PGconn *raw_connection() const
+  {
+    return m_conn;
+  }
 
   friend class internal::gate::connection_notification_receiver;
   void add_receiver(notification_receiver *);

@@ -1,6 +1,6 @@
 /** Implementation of string conversions.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -476,20 +476,16 @@ template<typename T>
 } // namespace
 
 
+#if !defined(PQXX_HAVE_CHARCONV_FLOAT)
 namespace
 {
-[[maybe_unused]] constexpr bool
-valid_infinity_string(std::string_view text) noexcept
+constexpr bool valid_infinity_string(std::string_view text) noexcept
 {
   return equal("infinity", text) or equal("Infinity", text) or
          equal("INFINITY", text) or equal("inf", text);
 }
-} // namespace
 
 
-#if !defined(PQXX_HAVE_CHARCONV_FLOAT)
-namespace
-{
 /// Wrapper for std::stringstream with C locale.
 /** We use this to work around missing std::to_chars for floating-point types.
  *

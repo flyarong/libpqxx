@@ -2,7 +2,7 @@
  *
  * These classes wrap SQL cursors in STL-like interfaces.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -22,22 +22,6 @@
 #include "pqxx/transaction.hxx"
 
 #include "pqxx/internal/header-post.hxx"
-
-
-pqxx::cursor_base::difference_type pqxx::cursor_base::all() noexcept
-{
-  // Implemented out-of-line so we don't fall afoul of Visual Studio defining
-  // min() and max() macros, which turn this expression into malformed code:
-  return std::numeric_limits<int>::max() - 1;
-}
-
-
-pqxx::cursor_base::difference_type pqxx::cursor_base::backward_all() noexcept
-{
-  // Implemented out-of-line so we don't fall afoul of Visual Studio defining
-  // min() and max() macros, which turn this expression into malformed code:
-  return std::numeric_limits<int>::min() + 1;
-}
 
 
 pqxx::cursor_base::cursor_base(

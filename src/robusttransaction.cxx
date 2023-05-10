@@ -2,7 +2,7 @@
  *
  * pqxx::robusttransaction is a slower but safer transaction class.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -204,6 +204,7 @@ void pqxx::internal::basic_robusttransaction::do_commit()
       // The transaction is still running.  Stick around until we know what
       // transpires.
       break;
+    default: PQXX_UNREACHABLE;
     }
   }
 

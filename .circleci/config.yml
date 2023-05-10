@@ -3,8 +3,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: debian:testing
-#      - image: postgres:latest
+      - image: debian:unstable
     environment:
       - PGHOST: "/tmp"
     steps:
@@ -14,37 +13,41 @@ jobs:
           command: apt update
       - run:
           name: Install
-          command: apt install -y lsb-release python3 cmake postgresql libpq-dev postgresql-server-dev-all build-essential autoconf dh-autoreconf autoconf-archive automake cppcheck
+          command: apt install -y lsb-release python3 cmake postgresql libpq-dev
+            postgresql-server-dev-all build-essential autoconf dh-autoreconf
+            autoconf-archive automake cppcheck clang
       - run:
           name: Identify
-          command: lsb_release -a && c++ --version
+          command: lsb_release -a && c++ --version && clang++ --version
       - run:
           name: Prepare postgres
           command: |
-              mkdir /tmp/db &&
-              chown postgres /tmp/db &&
-              su postgres -c '/usr/lib/postgresql/*/bin/initdb --pgdata /tmp/db --auth trust --nosync'
+            mkdir /tmp/db &&
+            chown postgres /tmp/db &&
+            su postgres -c '/usr/lib/postgresql/*/bin/initdb --pgdata /tmp/db --auth trust --nosync'
       - run:
           name: Run postgres
-          command: (su postgres -c '/usr/lib/postgresql/*/bin/postgres -D /tmp/db -k /tmp' &) && sleep 5
+          command: (su postgres -c '/usr/lib/postgresql/*/bin/postgres -D /tmp/db -k /tmp'
+            &) && sleep 5
       - run:
           name: Create postgres user
           command: su postgres -c "createuser -w -d root"
       - run:
           name: Set up database
-          command: createdb root
+          command: createdb --template=template0 --encoding=UNICODE root
       - run:
           name: Autogen
-          command: NOCONFIGURE=1 ./autogen.sh
+          command: ./autogen.sh
       - run:
           name: Configure
           command: |
-              ./configure \
-                  --disable-documentation \
-                  --enable-maintainer-mode \
-                  --enable-audit \
-                  --enable-shared --disable-static \
-                  CXXFLAGS=-O3
+            ./configure \
+                --disable-documentation \
+                --enable-maintainer-mode \
+                --enable-audit \
+                --enable-shared --disable-static \
+                CXXFLAGS='-O3 -std=c++17' \
+                CXX=clang++
       - store_artifacts:
           path: config.log
       - run:
@@ -52,9 +55,11 @@ jobs:
           command: make -j$(nproc)
       - run:
           name: Test
-          command: PGDATA=db/data make check
+          command: PGDATA=db/data make -j$(nproc) check
       - run:
           name: Analyse
           command: ./tools/lint --full >lint.log
       - store_artifacts:
           path: lint.log
+    # The resource_class feature allows configuring CPU and RAM resources for each job. Different resource classes are available for different executors. https://circleci.com/docs/2.0/configuration-reference/#resourceclass
+    resource_class: large

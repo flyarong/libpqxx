@@ -2,7 +2,7 @@
  *
  * pqxx::result represents the set of result rows from a database query
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -39,7 +39,7 @@ std::string const pqxx::result::s_empty_string;
 
 
 /// C++ wrapper for libpq's PQclear.
-void pqxx::internal::clear_result(pq::PGresult const *data)
+void pqxx::internal::clear_result(pq::PGresult const *data) noexcept
 {
   PQclear(const_cast<pq::PGresult *>(data));
 }
@@ -145,7 +145,7 @@ pqxx::row pqxx::result::operator[](result_size_type i) const noexcept
 pqxx::field pqxx::result::operator[](
   result_size_type row_num, row_size_type col_num) const noexcept
 {
-  return {*this, row_num, field_num};
+  return {*this, row_num, col_num};
 }
 #endif
 
@@ -318,17 +318,30 @@ std::string pqxx::result::status_error() const
   case PGRES_TUPLES_OK:   // The query successfully executed.
     break;
 
-  case PGRES_COPY_OUT: // Copy Out (from server) data transfer started.
-  case PGRES_COPY_IN:  // Copy In (to server) data transfer started.
+  case PGRES_COPY_OUT:  // Copy Out (from server) data transfer started.
+  case PGRES_COPY_IN:   // Copy In (to server) data transfer started.
+  case PGRES_COPY_BOTH: // Copy In/Out.  Used for streaming replication.
     break;
+
+#if defined(LIBPQ_HAS_PIPELINING)
+  case PGRES_PIPELINE_SYNC:    // Pipeline mode synchronisation point.
+  case PGRES_PIPELINE_ABORTED: // Previous command in pipeline failed.
+    throw feature_not_supported{"Not supported yet: libpq pipelines."};
+#endif
 
   case PGRES_BAD_RESPONSE: // The server's response was not understood.
   case PGRES_NONFATAL_ERROR:
-  case PGRES_FATAL_ERROR: err = PQresultErrorMessage(m_data.get()); break;
+  case PGRES_FATAL_ERROR:
+    PQXX_UNLIKELY
+    err = PQresultErrorMessage(m_data.get());
+    break;
+
+  case PGRES_SINGLE_TUPLE:
+    throw feature_not_supported{"Not supported: single-row mode."};
 
   default:
     throw internal_error{internal::concat(
-      "pqxx::result: Unrecognized response code ",
+      "pqxx::result: Unrecognized result status code ",
       PQresultStatus(m_data.get()))};
   }
   return err;
@@ -365,14 +378,14 @@ pqxx::result::size_type pqxx::result::affected_rows() const
 
 
 char const *pqxx::result::get_value(
-  pqxx::result::size_type row, pqxx::row::size_type col) const
+  pqxx::result::size_type row, pqxx::row::size_type col) const noexcept
 {
   return PQgetvalue(m_data.get(), row, col);
 }
 
 
 bool pqxx::result::get_is_null(
-  pqxx::result::size_type row, pqxx::row::size_type col) const
+  pqxx::result::size_type row, pqxx::row::size_type col) const noexcept
 {
   return PQgetisnull(m_data.get(), row, col) != 0;
 }

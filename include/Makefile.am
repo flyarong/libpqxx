@@ -52,16 +52,20 @@ nobase_include_HEADERS= pqxx/pqxx \
 	pqxx/internal/sql_cursor.hxx \
 	pqxx/internal/statement_parameters.hxx \
 	pqxx/internal/stream_iterator.hxx \
+	pqxx/internal/stream_query.hxx \
+	pqxx/internal/stream_query_impl.hxx \
 	pqxx/internal/wait.hxx \
 	pqxx/internal/gates/connection-errorhandler.hxx \
 	pqxx/internal/gates/connection-largeobject.hxx \
 	pqxx/internal/gates/connection-notification_receiver.hxx \
 	pqxx/internal/gates/connection-pipeline.hxx \
 	pqxx/internal/gates/connection-sql_cursor.hxx \
+	pqxx/internal/gates/connection-stream_from.hxx \
+	pqxx/internal/gates/connection-stream_to.hxx \
 	pqxx/internal/gates/connection-transaction.hxx \
 	pqxx/internal/gates/errorhandler-connection.hxx \
-	pqxx/internal/gates/icursorstream-icursor_iterator.hxx \
 	pqxx/internal/gates/icursor_iterator-icursorstream.hxx \
+	pqxx/internal/gates/icursorstream-icursor_iterator.hxx \
 	pqxx/internal/gates/result-connection.hxx \
 	pqxx/internal/gates/result-creation.hxx \
 	pqxx/internal/gates/result-pipeline.hxx \

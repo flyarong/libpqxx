@@ -2,7 +2,7 @@
  *
  * pqxx::result represents the set of result rows from a database query.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -69,25 +69,25 @@ pqxx::row::reference pqxx::row::back() const noexcept
 }
 
 
-pqxx::row::const_reverse_iterator pqxx::row::rbegin() const
+pqxx::row::const_reverse_iterator pqxx::row::rbegin() const noexcept
 {
   return const_reverse_row_iterator{end()};
 }
 
 
-pqxx::row::const_reverse_iterator pqxx::row::crbegin() const
+pqxx::row::const_reverse_iterator pqxx::row::crbegin() const noexcept
 {
   return rbegin();
 }
 
 
-pqxx::row::const_reverse_iterator pqxx::row::rend() const
+pqxx::row::const_reverse_iterator pqxx::row::rend() const noexcept
 {
   return const_reverse_row_iterator{begin()};
 }
 
 
-pqxx::row::const_reverse_iterator pqxx::row::crend() const
+pqxx::row::const_reverse_iterator pqxx::row::crend() const noexcept
 {
   return rend();
 }
@@ -208,7 +208,7 @@ bool PQXX_COLD pqxx::row::empty() const noexcept
 }
 
 
-pqxx::const_row_iterator pqxx::const_row_iterator::operator++(int)
+pqxx::const_row_iterator pqxx::const_row_iterator::operator++(int) noexcept
 {
   auto const old{*this};
   m_col++;
@@ -216,7 +216,7 @@ pqxx::const_row_iterator pqxx::const_row_iterator::operator++(int)
 }
 
 
-pqxx::const_row_iterator pqxx::const_row_iterator::operator--(int)
+pqxx::const_row_iterator pqxx::const_row_iterator::operator--(int) noexcept
 {
   auto const old{*this};
   m_col--;
@@ -233,7 +233,7 @@ pqxx::const_reverse_row_iterator::base() const noexcept
 
 
 pqxx::const_reverse_row_iterator
-pqxx::const_reverse_row_iterator::operator++(int)
+pqxx::const_reverse_row_iterator::operator++(int) noexcept
 {
   auto tmp{*this};
   operator++();

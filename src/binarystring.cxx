@@ -1,6 +1,6 @@
 /** Implementation of bytea (binary string) conversions.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -49,8 +49,8 @@ PQXX_COLD pqxx::binarystring::binarystring(field const &F)
 {
   unsigned char const *data{
     reinterpret_cast<unsigned char const *>(F.c_str())};
-  m_buf =
-    std::shared_ptr<unsigned char>{PQunescapeBytea(data, &m_size), PQfreemem};
+  m_buf = std::shared_ptr<unsigned char>{
+    PQunescapeBytea(data, &m_size), pqxx::internal::pq::pqfreemem};
   if (m_buf == nullptr)
     throw std::bad_alloc{};
 }

@@ -2,7 +2,7 @@
  *
  * These classes wrap SQL cursors in STL-like interfaces.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -116,7 +116,7 @@ pqxx::internal::sql_cursor::sql_cursor(
     (hold ? "WITH HOLD "sv : ""sv), "FOR "sv, query, " "sv,
     ((up == cursor_base::update) ? "FOR UPDATE "sv : "FOR READ ONLY "sv))};
 
-  t.exec(cq, internal::concat("[DECLARE "sv, name(), "]"sv));
+  t.exec(cq);
 
   // Now that we're here in the starting position, keep a copy of an empty
   // result.  That may come in handy later, because we may not be able to

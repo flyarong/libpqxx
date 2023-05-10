@@ -2,7 +2,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/separated_list instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -22,6 +22,7 @@
 
 // C++20: Simplify using std::ranges::range.
 // C++20: Optimise buffer allocation using random_access_range/iterator.
+// TODO: Can we pass separators at compile time?
 namespace pqxx
 {
 /**
@@ -85,6 +86,7 @@ separated_list(std::string_view sep, ITER begin, ITER end)
 }
 
 
+// C++20: Use a concept.
 /// Render items in a container as a string, using given separator.
 template<typename CONTAINER>
 [[nodiscard]] inline auto

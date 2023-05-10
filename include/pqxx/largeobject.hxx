@@ -2,7 +2,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/largeobject instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -387,6 +387,7 @@ public:
   static constexpr auto default_mode{
     std::ios::in | std::ios::out | std::ios::binary};
 
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
   [[deprecated("Use blob instead.")]] largeobject_streambuf(
     dbtransaction &t, largeobject o, openmode mode = default_mode,
     size_type buf_size = 512) :
@@ -394,6 +395,7 @@ public:
   {
     initialize(mode);
   }
+#include "pqxx/internal/ignore-deprecated-post.hxx"
 
   [[deprecated("Use blob instead.")]] largeobject_streambuf(
     dbtransaction &t, oid o, openmode mode = default_mode,
@@ -410,7 +412,10 @@ public:
   }
 
   /// For use by large object stream classes.
-  void process_notice(zview const &s) { m_obj.process_notice(s); }
+  void process_notice(zview const &s)
+  {
+    m_obj.process_notice(s);
+  }
 
 protected:
   virtual int sync() override
@@ -474,7 +479,10 @@ protected:
     return res;
   }
 
-  virtual int_type overflow() { return overflow(eof()); }
+  virtual int_type overflow()
+  {
+    return overflow(eof());
+  }
 
   virtual int_type underflow() override
   {
@@ -490,7 +498,10 @@ protected:
 
 private:
   /// Shortcut for traits_type::eof().
-  static int_type eof() { return traits_type::eof(); }
+  static int_type eof()
+  {
+    return traits_type::eof();
+  }
 
   /// Helper: change error position of -1 to EOF (probably a no-op).
   template<typename INTYPE> static std::streampos adjust_eof(INTYPE pos)
@@ -551,6 +562,7 @@ public:
   using pos_type = typename traits_type::pos_type;
   using off_type = typename traits_type::off_type;
 
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
   /// Create a basic_ilostream.
   /**
    * @param t Transaction in which this stream is to exist.
@@ -564,6 +576,7 @@ public:
   {
     super::init(&m_buf);
   }
+#include "pqxx/internal/ignore-deprecated-post.hxx"
 
   /// Create a basic_ilostream.
   /**
@@ -607,6 +620,7 @@ public:
   using pos_type = typename traits_type::pos_type;
   using off_type = typename traits_type::off_type;
 
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
   /// Create a basic_olostream.
   /**
    * @param t transaction in which this stream is to exist.
@@ -620,6 +634,7 @@ public:
   {
     super::init(&m_buf);
   }
+#include "pqxx/internal/ignore-deprecated-post.hxx"
 
   /// Create a basic_olostream.
   /**

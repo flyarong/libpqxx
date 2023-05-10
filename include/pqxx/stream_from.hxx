@@ -4,7 +4,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/stream_from instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -18,7 +18,6 @@
 #endif
 
 #include <cassert>
-#include <functional>
 #include <variant>
 
 #include "pqxx/connection.hxx"
@@ -36,27 +35,33 @@ class transaction_base;
 
 
 /// Pass this to a `stream_from` constructor to stream table contents.
-/** @deprecated Use @ref stream_from::table() instead.
+/** @deprecated Use @ref transaction_base::stream instead of stream_from.
  */
 constexpr from_table_t from_table;
 /// Pass this to a `stream_from` constructor to stream query results.
-/** @deprecated Use stream_from::query() instead.
+/** @deprecated Use transaction_base::stream instead of stream_from.
  */
 constexpr from_query_t from_query;
 
 
 /// Stream data from the database.
-/** Retrieving data this way is likely to be faster than executing a query and
- * then iterating and converting the rows fields.  You will also be able to
- * start processing before all of the data has come in.
+/** @deprecated Use @ref transaction_base::stream.
  *
- * There are also downsides.  If there's an error, it may leave the entire
- * connection in an unusable state, so you'll have to give the whole thing up.
- * Also, your connection to the database may break before you've received all
- * the data, so you may end up processing only part of the data.  Finally,
- * opening a stream puts the connection in a special state, so you won't be
- * able to do many other things with the connection or the transaction while
- * the stream is open.
+ * For larger data sets, retrieving data this way is likely to be faster than
+ * executing a query and then iterating and converting the rows fields.  You
+ * will also be able to start processing before all of the data has come in.
+ *
+ * There are also downsides.  Not all kinds of query will work in a stream.
+ * But straightforward `SELECT` and `UPDATE ... RETURNING` queries should work.
+ * This function makes use of @ref pqxx::stream_from, which in turn uses
+ * PostgreSQL's `COPY` command, so see the documentation for those to get the
+ * full details.
+ *
+ * There are other downsides.  If there stream encounters an error, it may
+ * leave the entire connection in an unusable state, so you'll have to give the
+ * whole thing up.  Finally, opening a stream puts the connection in a special
+ * state, so you won't be able to do many other things with the connection or
+ * the transaction while the stream is open.
  *
  * There are two ways of starting a stream: you stream either all rows in a
  * table (using one of the factories, `table()` or `raw_table()`), or the
@@ -74,7 +79,7 @@ class PQXX_LIBEXPORT stream_from : transaction_focus
 {
 public:
   using raw_line =
-    std::pair<std::unique_ptr<char, std::function<void(char *)>>, std::size_t>;
+    std::pair<std::unique_ptr<char, void(*)(void const *)>, std::size_t>;
 
   /// Factory: Execute query, and stream the results.
   /** The query can be a SELECT query or a VALUES query; or it can be an
@@ -86,7 +91,8 @@ public:
    *
    *     https://www.postgresql.org/docs/current/sql-copy.html
    */
-  static stream_from query(transaction_base &tx, std::string_view q)
+  [[deprecated("Use transaction_base::stream instead.")]] static stream_from
+  query(transaction_base &tx, std::string_view q)
   {
 #include "pqxx/internal/ignore-deprecated-pre.hxx"
     return {tx, from_query, q};
@@ -121,14 +127,16 @@ public:
    *     using pqxx::connection::quote_columns().  If you omit this argument,
    *     the stream will read all columns in the table, in schema order.
    */
-  static stream_from raw_table(
+  [[deprecated("Use transaction_base::stream instead.")]] static stream_from
+  raw_table(
     transaction_base &tx, std::string_view path,
     std::string_view columns = ""sv);
 
   /// Factory: Stream data from a given table.
   /** This is the convenient way to stream from a table.
    */
-  static stream_from table(
+  [[deprecated("Use transaction_base::stream instead.")]] static stream_from
+  table(
     transaction_base &tx, table_path path,
     std::initializer_list<std::string_view> columns = {});
   //@}
@@ -136,20 +144,20 @@ public:
   /// Execute query, and stream over the results.
   /** @deprecated Use factory function @ref query instead.
    */
-  [[deprecated("Use query() factory instead.")]] stream_from(
+  [[deprecated("Use transaction_base::stream instead.")]] stream_from(
     transaction_base &, from_query_t, std::string_view query);
 
   /// Stream all rows in table, all columns.
   /** @deprecated Use factories @ref table or @ref raw_table instead.
    */
-  [[deprecated("Use table() or raw_table() factory instead.")]] stream_from(
+  [[deprecated("Use transaction_base::stream instead.")]] stream_from(
     transaction_base &, from_table_t, std::string_view table);
 
   /// Stream given columns from all rows in table.
   /** @deprecated Use factories @ref table or @ref raw_table instead.
    */
   template<typename Iter>
-  [[deprecated("Use table() or raw_table() factory instead.")]] stream_from(
+  [[deprecated("Use transaction_base::stream instead.")]] stream_from(
     transaction_base &, from_table_t, std::string_view table,
     Iter columns_begin, Iter columns_end);
 
@@ -157,13 +165,13 @@ public:
   /** @deprecated Use factory function @ref query instead.
    */
   template<typename Columns>
-  [[deprecated("Use table() or raw_table() factory instead.")]] stream_from(
+  [[deprecated("Use transaction_base::stream() instead.")]] stream_from(
     transaction_base &tx, from_table_t, std::string_view table,
     Columns const &columns);
 
 #include "pqxx/internal/ignore-deprecated-pre.hxx"
   /// @deprecated Use factories @ref table or @ref raw_table instead.
-  [[deprecated("Use the from_table_t overload instead.")]] stream_from(
+  [[deprecated("Use transaction_base::stream instead.")]] stream_from(
     transaction_base &tx, std::string_view table) :
           stream_from{tx, from_table, table}
   {}
@@ -171,14 +179,14 @@ public:
 
   /// @deprecated Use factories @ref table or @ref raw_table instead.
   template<typename Columns>
-  [[deprecated("Use the from_table_t overload instead.")]] stream_from(
+  [[deprecated("Use transaction_base::stream instead.")]] stream_from(
     transaction_base &tx, std::string_view table, Columns const &columns) :
           stream_from{tx, from_table, table, columns}
   {}
 
   /// @deprecated Use factories @ref table or @ref raw_table instead.
   template<typename Iter>
-  [[deprecated("Use the from_table_t overload instead.")]] stream_from(
+  [[deprecated("Use transaction_base::stream instead.")]] stream_from(
     transaction_base &, std::string_view table, Iter columns_begin,
     Iter columns_end);
 
@@ -270,7 +278,7 @@ private:
     (extract_value<Tuple, indexes>(t), ...);
   }
 
-  pqxx::internal::glyph_scanner_func *m_glyph_scanner;
+  pqxx::internal::char_finder_func *m_char_finder;
 
   /// Current row's fields' text, combined into one reusable string.
   std::string m_row;
@@ -312,12 +320,12 @@ inline stream_from::stream_from(
 template<typename Tuple> inline stream_from &stream_from::operator>>(Tuple &t)
 {
   if (m_finished)
-    return *this;
+    PQXX_UNLIKELY return *this;
   static constexpr auto tup_size{std::tuple_size_v<Tuple>};
   m_fields.reserve(tup_size);
   parse_line();
   if (m_finished)
-    return *this;
+    PQXX_UNLIKELY return *this;
 
   if (std::size(m_fields) != tup_size)
     throw usage_error{internal::concat(

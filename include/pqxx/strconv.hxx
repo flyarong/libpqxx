@@ -2,7 +2,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/stringconv instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -153,9 +153,23 @@ template<typename TYPE> struct no_null
  */
 template<typename TYPE> struct string_traits
 {
+  /// Is conversion from `TYPE` to strings supported?
+  /** When defining your own conversions, specialise this as `true` to indicate
+   * that your string traits support the conversions to strings.
+   */
+  static constexpr bool converts_to_string{false};
+
+  /// Is conversion from `string_view` to `TYPE` supported?
+  /** When defining your own conversions, specialise this as `true` to indicate
+   * that your string traits support `from_string`.
+   */
+  static constexpr bool converts_from_string{false};
+
   /// Return a @c string_view representing value, plus terminating zero.
   /** Produces a @c string_view containing the PostgreSQL string representation
    * for @c value.
+   *
+   * @warning A null value has no string representation.  Do not pass a null.
    *
    * Uses the space from @c begin to @c end as a buffer, if needed.  The
    * returned string may lie somewhere in that buffer, or it may be a
@@ -175,7 +189,7 @@ template<typename TYPE> struct string_traits
   to_buf(char *begin, char *end, TYPE const &value);
 
   /// Write value's string representation into buffer at @c begin.
-  /** Assumes that value is non-null.
+  /* @warning A null value has no string representation.  Do not pass a null.
    *
    * Writes value's string representation into the buffer, starting exactly at
    * @c begin, and ensuring a trailing zero.  Returns the address just beyond
@@ -187,6 +201,8 @@ template<typename TYPE> struct string_traits
   /// Parse a string representation of a @c TYPE value.
   /** Throws @c conversion_error if @c value does not meet the expected format
    * for a value of this type.
+   *
+   * @warning A null value has no string representation.  Do not parse a null.
    */
   [[nodiscard]] static inline TYPE from_string(std::string_view text);
 
@@ -198,6 +214,8 @@ template<typename TYPE> struct string_traits
    */
   [[nodiscard]] static inline std::size_t
   size_buffer(TYPE const &value) noexcept;
+
+  // TODO: Move is_unquoted_string into the traits after all?
 };
 
 
@@ -205,6 +223,9 @@ template<typename TYPE> struct string_traits
 template<typename ENUM>
 struct nullness<ENUM, std::enable_if_t<std::is_enum_v<ENUM>>> : no_null<ENUM>
 {};
+
+
+// C++20: Concepts for "converts from string" & "converts to string."
 } // namespace pqxx
 
 
@@ -224,6 +245,9 @@ template<typename ENUM> struct enum_traits
 {
   using impl_type = std::underlying_type_t<ENUM>;
   using impl_traits = string_traits<impl_type>;
+
+  static constexpr bool converts_to_string{true};
+  static constexpr bool converts_from_string{true};
 
   [[nodiscard]] static constexpr zview
   to_buf(char *begin, char *end, ENUM const &value)
@@ -256,6 +280,10 @@ private:
 } // namespace pqxx::internal
 
 
+// We used to inline type_name<ENUM>, but this triggered a "double free" error
+// on program exit, when libpqxx was built as a shared library on Debian with
+// gcc 12.
+
 /// Macro: Define a string conversion for an enum type.
 /** This specialises the @c pqxx::string_traits template, so use it in the
  * @c ::pqxx namespace.
@@ -271,7 +299,7 @@ private:
 #define PQXX_DECLARE_ENUM_CONVERSION(ENUM)                                    \
   template<> struct string_traits<ENUM> : pqxx::internal::enum_traits<ENUM>   \
   {};                                                                         \
-  template<> inline std::string const type_name<ENUM> { #ENUM }
+  template<> inline std::string_view const type_name<ENUM> { #ENUM }
 
 
 namespace pqxx

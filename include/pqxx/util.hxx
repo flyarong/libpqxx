@@ -2,7 +2,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/util instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -15,8 +15,11 @@
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
 #endif
 
+#include <cassert>
 #include <cctype>
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -34,7 +37,6 @@
 #endif
 
 #include "pqxx/except.hxx"
-#include "pqxx/internal/encodings.hxx"
 #include "pqxx/types.hxx"
 #include "pqxx/version.hxx"
 
@@ -46,10 +48,18 @@ namespace pqxx
 #include <pqxx/internal/libpq-forward.hxx>
 
 
+// C++23: Retire wrapper.
+#if defined(PQXX_HAVE_UNREACHABLE)
+/// Equivalent to `std::unreachable()` if available.
+#  define PQXX_UNREACHABLE std::unreachable()
+#else
+#  define PQXX_UNREACHABLE assert(false)
+#endif
+
+
 /// Internal items for libpqxx' own use.  Do not use these yourself.
 namespace pqxx::internal
 {
-
 
 // C++20: Retire wrapper.
 /// Same as `std::cmp_less`, or a workaround where that's not available.
@@ -452,5 +462,142 @@ template<typename T> auto ssize(T const &c)
   return static_cast<signed_t>(std::size(c));
 #endif // __cpp_lib_ssize
 }
+
+
+/// Helper for determining a function's parameter types.
+/** This function has no definition.  It's not meant to be actually called.
+ * It's just there for pattern-matching in the compiler, so we can use its
+ * hypothetical return value.
+ */
+template<typename RETURN, typename... ARGS>
+std::tuple<ARGS...> args_f(RETURN (&func)(ARGS...));
+
+
+/// Helper for determining a `std::function`'s parameter types.
+/** This function has no definition.  It's not meant to be actually called.
+ * It's just there for pattern-matching in the compiler, so we can use its
+ * hypothetical return value.
+ */
+template<typename RETURN, typename... ARGS>
+std::tuple<ARGS...> args_f(std::function<RETURN(ARGS...)> const &);
+
+
+/// Helper for determining a member function's parameter types.
+/** This function has no definition.  It's not meant to be actually called.
+ * It's just there for pattern-matching in the compiler, so we can use its
+ * hypothetical return value.
+ */
+template<typename CLASS, typename RETURN, typename... ARGS>
+std::tuple<ARGS...> member_args_f(RETURN (CLASS::*)(ARGS...));
+
+
+/// Helper for determining a const member function's parameter types.
+/** This function has no definition.  It's not meant to be actually called.
+ * It's just there for pattern-matching in the compiler, so we can use its
+ * hypothetical return value.
+ */
+template<typename CLASS, typename RETURN, typename... ARGS>
+std::tuple<ARGS...> member_args_f(RETURN (CLASS::*)(ARGS...) const);
+
+
+/// Helper for determining a callable type's parameter types.
+/** This specialisation should work for lambdas.
+ *
+ * This function has no definition.  It's not meant to be actually called.
+ * It's just there for pattern-matching in the compiler, so we can use its
+ * hypothetical return value.
+ */
+template<typename CALLABLE>
+auto args_f(CALLABLE const &f)
+  -> decltype(member_args_f(&CALLABLE::operator()));
+
+
+/// A callable's parameter types, as a tuple.
+template<typename CALLABLE>
+using args_t = decltype(args_f(std::declval<CALLABLE>()));
+
+
+/// Helper: Apply `strip_t` to each of a tuple type's component types.
+/** This function has no definition.  It is not meant to be called, only to be
+ * used to deduce the right types.
+ */
+template<typename... TYPES>
+std::tuple<strip_t<TYPES>...> strip_types(std::tuple<TYPES...> const &);
+
+
+/// Take a tuple type and apply @ref strip_t to its component types.
+template<typename... TYPES>
+using strip_types_t = decltype(strip_types(std::declval<TYPES...>()));
+
+
+/// Return original byte for escaped character.
+inline constexpr char unescape_char(char escaped) noexcept
+{
+  switch (escaped)
+  {
+  case 'b': // Backspace.
+    PQXX_UNLIKELY return '\b';
+  case 'f': // Form feed
+    PQXX_UNLIKELY return '\f';
+  case 'n': // Line feed.
+    return '\n';
+  case 'r': // Carriage return.
+    return '\r';
+  case 't': // Horizontal tab.
+    return '\t';
+  case 'v': // Vertical tab.
+    return '\v';
+  default: break;
+  }
+  // Regular character ("self-escaped").
+  return escaped;
+}
+
+
+// C++20: std::span?
+/// Get error string for a given @c errno value.
+template<std::size_t BYTES>
+char const *PQXX_COLD
+error_string(int err_num, std::array<char, BYTES> &buffer)
+{
+  // Not entirely clear whether strerror_s will be in std or global namespace.
+  using namespace std;
+
+#if defined(PQXX_HAVE_STERROR_S) || defined(PQXX_HAVE_STRERROR_R)
+#  if defined(PQXX_HAVE_STRERROR_S)
+  auto const err_result{strerror_s(std::data(buffer), BYTES, err_num)};
+#  else
+  auto const err_result{strerror_r(err_num, std::data(buffer), BYTES)};
+#  endif
+  if constexpr (std::is_same_v<pqxx::strip_t<decltype(err_result)>, char *>)
+  {
+    // GNU version of strerror_r; returns the error string, which may or may
+    // not reside within buffer.
+    return err_result;
+  }
+  else
+  {
+    // Either strerror_s or POSIX strerror_r; returns an error code.
+    // Sorry for being lazy here: Not reporting error string for the case
+    // where we can't retrieve an error string.
+    if (err_result == 0)
+      return std::data(buffer);
+    else
+      return "Compound errors.";
+  }
+
+#else
+  // Fallback case, hopefully for no actual platforms out there.
+  pqxx::ignore_unused(err_num, buffer);
+  return "(No error information available.)";
+#endif
+}
 } // namespace pqxx::internal
+
+
+namespace pqxx::internal::pq
+{
+/// Wrapper for `PQfreemem()`, with C++ linkage.
+PQXX_LIBEXPORT void pqfreemem(void const *) noexcept;
+} // namespace pqxx::internal::pq
 #endif

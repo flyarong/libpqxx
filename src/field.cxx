@@ -2,7 +2,7 @@
  *
  * pqxx::field refers to a field in a query result.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -14,8 +14,8 @@
 
 #include "pqxx/internal/header-pre.hxx"
 
-#include "pqxx/internal/libpq-forward.hxx"
 #include "pqxx/field.hxx"
+#include "pqxx/internal/libpq-forward.hxx"
 #include "pqxx/result.hxx"
 #include "pqxx/row.hxx"
 
@@ -27,7 +27,7 @@ pqxx::field::field(pqxx::row const &r, pqxx::row::size_type c) noexcept :
 {}
 
 
-bool PQXX_COLD pqxx::field::operator==(field const &rhs) const
+bool PQXX_COLD pqxx::field::operator==(field const &rhs) const noexcept
 {
   if (is_null() and rhs.is_null())
     return true;

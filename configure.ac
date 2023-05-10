@@ -1,11 +1,8 @@
 # Generate configure script for libpqxx.  This needs the autoconf archive
 # package installed.  (The configure script itself does not require it though.)
 
-AC_PREREQ(2.69)
-AC_INIT(
-	libpqxx,
-	[m4_esyscmd_s([./tools/extract_version])],
-	[Jeroen T. Vermeulen])
+AC_PREREQ([2.71])
+AC_INIT([libpqxx],[m4_esyscmd_s([./tools/extract_version])],[Jeroen T. Vermeulen])
 AC_LANG(C++)
 
 AC_CONFIG_SRCDIR([src/connection.cxx])
@@ -17,7 +14,7 @@ PQXX_ABI=m4_esyscmd_s([./tools/extract_version --abi])
 AC_SUBST(PQXXVERSION, $PACKAGE_VERSION)
 AC_SUBST(PQXX_ABI)
 
-AC_CONFIG_HEADER([include/pqxx/config.h])
+AC_CONFIG_HEADERS([include/pqxx/config.h])
 
 # Default prefix for installs.
 AC_PREFIX_DEFAULT(/usr/local)
@@ -32,7 +29,7 @@ AC_DEFUN([read_test], [AC_LANG_SOURCE(
 AC_PROG_CXX
 AC_PROG_INSTALL
 AC_DISABLE_SHARED
-AC_PROG_LIBTOOL
+LT_INIT
 AC_PROG_MAKE_SET
 AC_PATH_PROG([MKDIR], [mkdir])
 
@@ -167,7 +164,27 @@ then
 
 		# "Iffy" g++ options.  Some reasonably current g++-like
 		# compilers may not support these.
+# TODO: Once false positive in std lib is fixed, simplify to "-fanalyzer".
 		add_compiler_opts_if_ok \
+			-Wanalyzer-double-fclose \
+			-Wanalyzer-double-free \
+			-Wanalyzer-exposure-through-output-file \
+			-Wanalyzer-file-leak \
+			-Wanalyzer-free-of-non-heap \
+			-Wanalyzer-malloc-leak \
+			-Wanalyzer-mismatching-deallocation \
+			-Wanalyzer-null-dereference \
+			-Wanalyzer-null-argument \
+			-Wanalyzer-possible-null-argument \
+			-Wanalyzer-shift-count-negative \
+			-Wanalyzer-overflow \
+			-Wanalyzer-stale-setjmp-buffer \
+			-Wanalyzer-unsafe-call-within-signal-handler \
+			-Wanalyzer-use-after-free \
+			-Wanalyzer-use-of-pointer-in-stale-stack-frame \
+			-Wanalyzer-use-of-uninitialized-value \
+			-Wanalyzer-write-to-const \
+			-Wanalyzer-write-to-string-literal \
 			-fnothrow-opt \
 			-Wattribute-alias=2 \
 			-Wextra-semi \
@@ -622,43 +639,8 @@ occurring in the file.
 	${with_postgres_libpath})
 
 
-# PQencryptPasswordConn was added in postgres 10.
-AC_MSG_CHECKING([for PQencryptPasswordConn])
-have_pqencryptpasswordconn=yes
-AC_COMPILE_IFELSE(
-	[AC_LANG_PROGRAM(
-		[#include<libpq-fe.h>],
-		[
-			extern PGconn *conn;
-			PQencryptPasswordConn(
-				conn, "pwd", "user", "scram-sha-256")
-		]
-	)],
-	AC_DEFINE(
-		[PQXX_HAVE_PQENCRYPTPASSWORDCONN],
-		1,
-		[Define if libpq has PQencryptPasswordConn (since pg 10).]),
-	[have_pqencryptpasswordconn=no])
-AC_MSG_RESULT($have_pqencryptpasswordconn)
-
-
-# "Pipeline mode" was introduced in libpq 14.
-AC_MSG_CHECKING([for libpq pipeline mode])
-have_pq_pipeline=yes
-AC_COMPILE_IFELSE(
-	[AC_LANG_PROGRAM(
-		[#include<libpq-fe.h>],
-		[
-			extern PGconn *conn;
-			PQenterPipelineMode(conn)
-		]
-	)],
-	AC_DEFINE(
-		[PQXX_HAVE_PQ_PIPELINE],
-		1,
-		[Define if libpq has pipeline mode (since pg 14).]),
-	[have_pq_pipeline=no])
-AC_MSG_RESULT($have_pq_pipeline)
+# TODO: PQresultMemorySize()
+# TODO: Use feature test macros in libpq-fe.h, should be faster & easier.
 
 
 AC_MSG_CHECKING([for usable std::filesystem::path])
@@ -672,6 +654,17 @@ AC_COMPILE_IFELSE(
 	have_path=no)
 AC_MSG_RESULT($have_path)
 
+
+AC_MSG_CHECKING([for C++23 std::unreachable()])
+have_unreachable=yes
+AC_COMPILE_IFELSE(
+	[read_test(unreachable.cxx)],
+	AC_DEFINE(
+		[PQXX_HAVE_UNREACHABLE],
+		1,
+		[Define if compiler has std::unreachable().]),
+	have_unreachable=no)
+AC_MSG_RESULT($have_unreachable)
 
 AC_MSG_CHECKING([whether we need a link option for <filesystem> support])
 LIBS_SAVE="$LIBS"
@@ -735,4 +728,5 @@ AC_CONFIG_FILES([
 
 AC_CONFIG_COMMANDS([configitems], ["${srcdir}/tools/splitconfig" "${srcdir}"])
 
-AC_OUTPUT(compile_flags)
+AC_CONFIG_FILES([compile_flags])
+AC_OUTPUT

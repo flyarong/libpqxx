@@ -2,7 +2,7 @@
  *
  * pqxx::connection encapsulates a connection to a database.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -10,9 +10,16 @@
  */
 #include "pqxx-source.hxx"
 
+// For ioctlsocket().
+// We would normally include this after the standard headers, but MinGW warns
+// that we can't include windows.h before winsock2.h, and some of the standard
+// headers probably include windows.h.
+#if defined(_WIN32) && __has_include(<winsock2.h>)
+#  include <winsock2.h>
+#endif
+
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -30,11 +37,6 @@
 #endif
 #if __has_include(<unistd.h>)
 #  include <unistd.h>
-#endif
-
-// For ioctlsocket().
-#if defined(_WIN32) && __has_include(<winsock2.h>)
-#  include <winsock2.h>
 #endif
 
 extern "C"
@@ -77,11 +79,12 @@ extern "C"
 
 using namespace std::literals;
 
+
 std::string PQXX_COLD
 pqxx::encrypt_password(char const user[], char const password[])
 {
-  std::unique_ptr<char, std::function<void(char *)>> p{
-    PQencryptPassword(password, user), PQfreemem};
+  std::unique_ptr<char, void(*)(void const *)> p{
+    PQencryptPassword(password, user), pqxx::internal::pq::pqfreemem};
   return {p.get()};
 }
 
@@ -100,6 +103,8 @@ pqxx::connection::connection(
 {
   if (m_conn == nullptr)
     throw std::bad_alloc{};
+  if (status() == CONNECTION_BAD)
+    throw pqxx::broken_connection{PQerrorMessage(m_conn)};
 }
 
 
@@ -114,7 +119,7 @@ std::pair<bool, bool> pqxx::connection::poll_connect()
   case PGRES_POLLING_OK:
     if (not is_open())
       throw pqxx::broken_connection{PQerrorMessage(m_conn)};
-    return std::make_pair(false, false);
+    PQXX_LIKELY return std::make_pair(false, false);
   case PGRES_POLLING_ACTIVE:
     throw internal_error{
       "Nonblocking connection poll returned obsolete 'active' state."};
@@ -138,6 +143,7 @@ void pqxx::connection::complete_init()
   catch (std::exception const &)
   {
     PQfinish(m_conn);
+    m_conn = nullptr;
     throw;
   }
 }
@@ -459,10 +465,20 @@ bool pqxx::connection::is_busy() const noexcept
 }
 
 
+namespace
+{
+/// Wrapper for `PQfreeCancel`, with C++ linkage.
+void wrap_pgfreecancel(PGcancel *ptr)
+{
+  PQfreeCancel(ptr);
+}
+} // namespace
+
+
 void PQXX_COLD pqxx::connection::cancel_query()
 {
-  using pointer = std::unique_ptr<PGcancel, std::function<void(PGcancel *)>>;
-  pointer cancel{PQgetCancel(m_conn), PQfreeCancel};
+  std::unique_ptr<PGcancel, void(*)(PGcancel *)> cancel{
+    PQgetCancel(m_conn), wrap_pgfreecancel};
   if (cancel == nullptr)
     PQXX_UNLIKELY
   throw std::bad_alloc{};
@@ -477,48 +493,6 @@ void PQXX_COLD pqxx::connection::cancel_query()
 }
 
 
-namespace
-{
-/// Get error string for a given @c errno value.
-template<std::size_t BYTES>
-char const *PQXX_COLD
-error_string(int err_num, std::array<char, BYTES> &buffer)
-{
-  // Not entirely clear whether strerror_s will be in std or global namespace.
-  using namespace std;
-
-#if defined(PQXX_HAVE_STERROR_S) || defined(PQXX_HAVE_STRERROR_R)
-#  if defined(PQXX_HAVE_STRERROR_S)
-  auto const err_result{strerror_s(std::data(buffer), BYTES, err_num)};
-#  else
-  auto const err_result{strerror_r(err_num, std::data(buffer), BYTES)};
-#  endif
-  if constexpr (std::is_same_v<pqxx::strip_t<decltype(err_result)>, char *>)
-  {
-    // GNU version of strerror_r; returns the error string, which may or may
-    // not reside within buffer.
-    return err_result;
-  }
-  else
-  {
-    // Either strerror_s or POSIX strerror_r; returns an error code.
-    // Sorry for being lazy here: Not reporting error string for the case
-    // where we can't retrieve an error string.
-    if (err_result == 0)
-      return std::data(buffer);
-    else
-      return "Compound errors.";
-  }
-
-#else
-  // Fallback case, hopefully for no actual platforms out there.
-  pqxx::ignore_unused(err_num, buffer);
-  return "(No error information available.)";
-#endif
-}
-} // namespace
-
-
 #if defined(_WIN32) || __has_include(<fcntl.h>)
 void pqxx::connection::set_blocking(bool block) &
 {
@@ -528,7 +502,7 @@ void pqxx::connection::set_blocking(bool block) &
   if (::ioctlsocket(fd, FIONBIO, &mode) != 0)
   {
     std::array<char, 200> errbuf;
-    char const *err{error_string(WSAGetLastError(), errbuf)};
+    char const *err{pqxx::internal::error_string(WSAGetLastError(), errbuf)};
     throw broken_connection{
       internal::concat("Could not set socket's blocking mode: ", err)};
   }
@@ -537,7 +511,7 @@ void pqxx::connection::set_blocking(bool block) &
   auto flags{::fcntl(fd, F_GETFL, 0)};
   if (flags == -1)
   {
-    char const *const err{error_string(errno, errbuf)};
+    char const *const err{pqxx::internal::error_string(errno, errbuf)};
     throw broken_connection{
       internal::concat("Could not get socket state: ", err)};
   }
@@ -547,7 +521,7 @@ void pqxx::connection::set_blocking(bool block) &
     flags &= ~O_NONBLOCK;
   if (::fcntl(fd, F_SETFL, flags) == -1)
   {
-    char const *const err{error_string(errno, errbuf)};
+    char const *const err{pqxx::internal::error_string(errno, errbuf)};
     throw broken_connection{
       internal::concat("Could not set socket's blocking mode: ", err)};
   }
@@ -566,13 +540,13 @@ pqxx::connection::set_verbosity(error_verbosity verbosity) &noexcept
 namespace
 {
 /// Unique pointer to PGnotify.
-using notify_ptr = std::unique_ptr<PGnotify, std::function<void(PGnotify *)>>;
+using notify_ptr = std::unique_ptr<PGnotify, void(*)(void const *)>;
 
 
 /// Get one notification from a connection, or null.
 notify_ptr get_notif(pqxx::internal::pq::PGconn *conn)
 {
-  return notify_ptr(PQnotifies(conn), PQfreemem);
+  return notify_ptr(PQnotifies(conn), pqxx::internal::pq::pqfreemem);
 }
 } // namespace
 
@@ -716,26 +690,10 @@ pqxx::result pqxx::connection::exec(
 std::string pqxx::connection::encrypt_password(
   char const user[], char const password[], char const *algorithm)
 {
-#if defined(PQXX_HAVE_PQENCRYPTPASSWORDCONN)
-  {
-    auto const buf{PQencryptPasswordConn(m_conn, password, user, algorithm)};
-    std::unique_ptr<char const, std::function<void(char const *)>> ptr{
-      buf, [](char const *x) { PQfreemem(const_cast<char *>(x)); }};
-    return std::string(ptr.get());
-  }
-#else
-  {
-    // No PQencryptPasswordConn.  Fall back on the old PQencryptPassword...
-    // unless the caller selects a different algorithm.
-    if (algorithm != nullptr and std::strcmp(algorithm, "md5") != 0)
-      throw feature_not_supported{
-        "Could not encrypt password: available libpq version does not support "
-        "algorithms other than md5."};
-#  include "pqxx/internal/ignore-deprecated-pre.hxx"
-    return pqxx::encrypt_password(user, password);
-#  include "pqxx/internal/ignore-deprecated-post.hxx"
-  }
-#endif // PQXX_HAVE_PQENCRYPTPASSWORDCONN
+  auto const buf{PQencryptPasswordConn(m_conn, password, user, algorithm)};
+  std::unique_ptr<char const, void(*)(void const *)> ptr{
+    buf, pqxx::internal::pq::pqfreemem};
+  return std::string(ptr.get());
 }
 
 
@@ -853,7 +811,7 @@ void pqxx::connection::unregister_transaction(transaction_base *t) noexcept
 }
 
 
-std::pair<std::unique_ptr<char, std::function<void(char *)>>, std::size_t>
+std::pair<std::unique_ptr<char, void(*)(void const *)>, std::size_t>
 pqxx::connection::read_copy_line()
 {
   char *buf{nullptr};
@@ -870,17 +828,24 @@ pqxx::connection::read_copy_line()
 
   case -1: // End of COPY.
     make_result(PQgetResult(m_conn), q, *q);
-    return {};
+    return std::make_pair(
+      std::unique_ptr<char, void(*)(void const *)>{
+        nullptr, pqxx::internal::pq::pqfreemem},
+	0u);
 
   case 0: // "Come back later."
     throw internal_error{"table read inexplicably went asynchronous"};
 
   default: // Success, got buffer size.
-    // Line size includes a trailing zero, which we ignore.
-    auto const text_len{static_cast<std::size_t>(line_len) - 1};
-    return std::make_pair(
-      std::unique_ptr<char, std::function<void(char *)>>{buf, PQfreemem},
-      text_len);
+    PQXX_LIKELY
+    {
+      // Line size includes a trailing zero, which we ignore.
+      auto const text_len{static_cast<std::size_t>(line_len) - 1};
+      return std::make_pair(
+        std::unique_ptr<char, void(*)(void const *)>{
+	  buf, pqxx::internal::pq::pqfreemem},
+        text_len);
+    }
   }
 }
 
@@ -989,8 +954,8 @@ std::string PQXX_COLD pqxx::connection::unesc_raw(char const text[]) const
     std::size_t len;
     auto bytes{const_cast<unsigned char *>(
       reinterpret_cast<unsigned char const *>(text))};
-    std::unique_ptr<unsigned char, std::function<void(unsigned char *)>> const
-      ptr{PQunescapeBytea(bytes, &len), PQfreemem};
+    std::unique_ptr<unsigned char, void(*)(void const *)> const
+      ptr{PQunescapeBytea(bytes, &len), pqxx::internal::pq::pqfreemem};
     return std::string{ptr.get(), ptr.get() + len};
   }
 }
@@ -1024,9 +989,9 @@ std::string pqxx::connection::quote(std::basic_string_view<std::byte> b) const
 
 std::string pqxx::connection::quote_name(std::string_view identifier) const
 {
-  std::unique_ptr<char, std::function<void(char *)>> buf{
+  std::unique_ptr<char, void(*)(void const *)> buf{
     PQescapeIdentifier(m_conn, identifier.data(), std::size(identifier)),
-    PQfreemem};
+    pqxx::internal::pq::pqfreemem};
   if (buf.get() == nullptr)
     PQXX_UNLIKELY
   throw failure{err_msg()};
@@ -1053,13 +1018,12 @@ pqxx::connection::esc_like(std::string_view text, char escape_char) const
 {
   std::string out;
   out.reserve(std::size(text));
+  // TODO: Rewrite using a char_finder.
   internal::for_glyphs(
     internal::enc_group(encoding_id()),
     [&out, escape_char](char const *gbegin, char const *gend) {
       if ((gend - gbegin == 1) and (*gbegin == '_' or *gbegin == '%'))
-        // We're not expecting a lot of wildcards in a string.  Usually.
-        PQXX_UNLIKELY
-      out.push_back(escape_char);
+        PQXX_UNLIKELY out.push_back(escape_char);
 
       for (; gbegin != gend; ++gbegin) out.push_back(*gbegin);
     },
@@ -1203,6 +1167,13 @@ char const *get_default(PQconninfoOption const &opt) noexcept
   // The environment variable is the prevailing default.
   return var;
 }
+
+
+/// Wrapper for `PQconninfoFree()`, with C++ linkage.
+void pqconninfofree(PQconninfoOption *ptr)
+{
+  PQconninfoFree(ptr);
+}
 } // namespace
 
 
@@ -1212,9 +1183,8 @@ std::string pqxx::connection::connection_string() const
     PQXX_UNLIKELY
   throw usage_error{"Can't get connection string: connection is not open."};
 
-  std::unique_ptr<
-    PQconninfoOption, std::function<void(PQconninfoOption *)>> const params{
-    PQconninfo(m_conn), PQconninfoFree};
+  std::unique_ptr<PQconninfoOption, void(*)(PQconninfoOption *)>
+    const params{PQconninfo(m_conn), pqconninfofree};
   if (params.get() == nullptr)
     PQXX_UNLIKELY
   throw std::bad_alloc{};
@@ -1244,9 +1214,7 @@ std::string pqxx::connection::connection_string() const
 #if defined(_WIN32) || __has_include(<fcntl.h>)
 pqxx::connecting::connecting(zview connection_string) :
         m_conn{connection::connect_nonblocking, connection_string}
-{
-  m_conn.set_blocking(false);
-}
+{}
 #endif // defined(_WIN32) || __has_include(<fcntl.h>
 
 
@@ -1266,7 +1234,6 @@ pqxx::connection pqxx::connecting::produce() &&
   if (!done())
     throw usage_error{
       "Tried to produce a nonblocking connection before it was done."};
-  m_conn.set_blocking(true);
   m_conn.complete_init();
   return std::move(m_conn);
 }

@@ -4,7 +4,9 @@
 #include <ctime>
 
 #include <pqxx/internal/header-pre.hxx>
+
 #include <pqxx/internal/wait.hxx>
+
 #include <pqxx/internal/header-post.hxx>
 
 #include <pqxx/notification>
@@ -62,7 +64,7 @@ void test_004()
     PQXX_CHECK_EQUAL(notifs, 0, "Got unexpected notifications.");
     // Sleep for one second.  I'm not proud of this, but how does one inject
     // a change to the built-in clock in a static language?
-    pqxx::internal::wait_for(1'000'000u);
+    pqxx::internal::wait_for(1000u);
     notifs = conn.get_notifs();
   }
 

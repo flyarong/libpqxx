@@ -17,6 +17,7 @@ from abc import (
     )
 from argparse import ArgumentParser
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 import json
@@ -41,10 +42,7 @@ from subprocess import (
     check_output,
     DEVNULL,
     )
-from sys import (
-    stderr,
-    stdout,
-    )
+import sys
 from tempfile import mkdtemp
 from textwrap import dedent
 
@@ -52,10 +50,12 @@ from textwrap import dedent
 CPUS = cpu_count()
 
 GCC_VERSIONS = list(range(8, 14))
-GCC = ['g++-%d' % ver for ver in GCC_VERSIONS]
+GCC = [f'g++-{ver}' for ver in GCC_VERSIONS]
 CLANG_VERSIONS = list(range(7, 15))
-CLANG = ['clang++-6.0'] + ['clang++-%d' % ver for ver in CLANG_VERSIONS]
+CLANG = [f'clang++-{ver}' for ver in CLANG_VERSIONS]
 CXX = GCC + CLANG
+
+DIALECTS = ['17', '20', '2b']
 
 STDLIB = (
     '',
@@ -87,7 +87,7 @@ DEBUG = {
 # actual command line needed to do the build.
 CMAKE_GENERATORS = {
     'Ninja': ['ninja'],
-    'Unix Makefiles': ['make', '-j%d' % CPUS],
+    'Unix Makefiles': ['make', f'-j{CPUS}'],
 }
 
 
@@ -102,7 +102,7 @@ class Skip(Exception):
 def run(cmd, output, cwd=None):
     """Run a command, write output to file-like object."""
     command_line = ' '.join(cmd)
-    output.write("%s\n\n" % command_line)
+    output.write(f"{command_line}\n\n")
     check_call(cmd, stdout=output, stderr=output, cwd=cwd)
 
 
@@ -166,8 +166,8 @@ def check_compiler(work_dir, cxx, stdlib, check, verbose=False):
     except (OSError, CalledProcessError):
         if verbose:
             with open(err_file) as errors:
-                stdout.write(errors.read())
-            print("Can't build with '%s %s'.  Skipping." % (cxx, stdlib))
+                sys.stdout.write(errors.read())
+            print(f"Can't build with '{cxx} {stdlib}'.  Skipping.")
         return False
     else:
         return True
@@ -195,27 +195,25 @@ def find_cmake_command():
         return None
 
     names = {generator['name'] for generator in json.loads(caps)['generators']}
-    for gen in CMAKE_GENERATORS.keys():
+    for gen in CMAKE_GENERATORS:
         if gen in names:
             return gen
     return None
 
 
-class Config:
+class Config(metaclass=ABCMeta):
     """Configuration for a build.
 
     These classes must be suitable for pickling, so we can send its objects to
     worker processes.
     """
-    __metaclass__ = ABCMeta
-
     @abstractmethod
     def name(self):
         """Return an identifier for this build configuration."""
 
     def make_log_name(self):
         """Compose log file name for this build."""
-        return "build-%s.out" % self.name()
+        return f"build-{self.name()}.out"
 
 
 class Build:
@@ -231,7 +229,7 @@ class Build:
         self.log = os.path.join(logs_dir, config.make_log_name())
         # Start a fresh log file.
         with open(self.log, 'w') as log:
-            log.write("Starting %s.\n" % datetime.utcnow())
+            log.write(f"Starting {datetime.utcnow()}.\n")
         self.work_dir = mkdtemp()
 
     def clean_up(self):
@@ -259,7 +257,7 @@ class Build:
             try:
                 function(log)
             except Exception as error:
-                log.write("%s\n" % error)
+                log.write(f"{error}\n")
                 raise
 
     def do_configure(self):
@@ -275,41 +273,45 @@ class Build:
         self.logging(self.test)
 
 
+@dataclass
 class AutotoolsConfig(Config):
     """A combination of build options for the "configure" script."""
-    def __init__(self, cxx, opt, stdlib, link, link_opts, debug, debug_opts):
-        self.cxx = cxx
-        self.opt = opt
-        self.stdlib = stdlib
-        self.link = link
-        self.link_opts = link_opts
-        self.debug = debug
-        self.debug_opts = debug_opts
+    cxx: str
+    opt: str
+    stdlib: str
+    link: str
+    link_opts: str
+    debug: str
+    debug_opts: str
+    dialect: str
 
     def name(self):
         return '_'.join([
-            self.cxx, self.opt, self.stdlib, self.link, self.debug])
+            self.cxx,
+            self.dialect,
+            self.opt,
+            self.stdlib,
+            self.link,
+            self.debug,
+        ])
 
 
 class AutotoolsBuild(Build):
     """Build using the "configure" script."""
-    __metaclass__ = ABCMeta
-
     def configure(self, log):
         configure = [
             os.path.join(getcwd(), "configure"),
-            "CXX=%s" % self.config.cxx,
+            f"CXX={self.config.cxx}",
             ]
 
-        if self.config.stdlib == '':
-            configure += [
-                "CXXFLAGS=%s" % self.config.opt,
-            ]
-        else:
-            configure += [
-                "CXXFLAGS=%s %s" % (self.config.opt, self.config.stdlib),
-                "LDFLAGS=%s" % self.config.stdlib,
-                ]
+        dialect_option = f'-std=c++{self.config.dialect}'
+
+        cxx_flags = ' '.join(filter(
+            None, [dialect_option, self.config.opt, self.config.stdlib]))
+
+        configure += [f"CXXFLAGS={cxx_flags}"]
+        if self.config.stdlib != "":
+            configure += [f"LDFLAGS={self.config.stdlib}"]
 
         configure += [
             "--disable-documentation",
@@ -318,34 +320,34 @@ class AutotoolsBuild(Build):
         run(configure, log, cwd=self.work_dir)
 
     def build(self, log):
-        run(['make', '-j%d' % CPUS], log, cwd=self.work_dir)
+        run(['make', f'-j{CPUS}'], log, cwd=self.work_dir)
         # Passing "TESTS=" like this will suppress the actual running of
         # the tests.  We run them in the "test" stage.
-        run(['make', '-j%d' % CPUS, 'check', 'TESTS='], log, cwd=self.work_dir)
+        run(['make', f'-j{CPUS}', 'check', 'TESTS='], log, cwd=self.work_dir)
 
 
 class CMakeConfig(Config):
     """Configuration for a CMake build."""
-    def __init__(self, generator):
+    def __init__(self, generator, dialect):
         self.generator = generator
         self.builder = CMAKE_GENERATORS[generator]
+        self.dialect = dialect
 
     def name(self):
         return "cmake"
 
 
-class CMakeBuild(Build):
+class CMakeBuild(Build, metaclass=ABCMeta):
     """Build using CMake.
 
     Ignores the config for now.
     """
-    __metaclass__ = ABCMeta
-
     def configure(self, log):
         source_dir = getcwd()
         generator = self.config.generator
+        dialect_flag = f'-DCMAKE_CXX_VERSION={self.config.dialect}'
         run(
-            ['cmake', '-G', generator, source_dir], output=log,
+            ['cmake', '-G', generator, source_dir, dialect_flag], output=log,
             cwd=self.work_dir)
 
     def build(self, log):
@@ -359,6 +361,11 @@ def parse_args():
     parser.add_argument(
         '--compilers', '-c', default=','.join(CXX),
         help="Compilers, separated by commas.  Default is %(default)s.")
+    parser.add_argument(
+        '--dialects', '-d', default=','.join(DIALECTS),
+        help=(
+            "C++ dialects, separated by commas.  "
+            f"Default is {','.join(DIALECTS)}."))
     parser.add_argument(
         '--optimize', '-O', default=','.join(OPT),
         help=(
@@ -413,8 +420,9 @@ def service_builds(in_queue, fail_queue, out_queue):
     for build in read_queue(in_queue):
         try:
             build.do_build()
-        except Exception as error:
-            fail_queue.put((build, "%s" % error))
+        # (Ignore warning about "too broad" an except.)
+        except Exception as error:  # pylint: disable=W0703
+            fail_queue.put((build, f"{error}"))
         else:
             out_queue.put(build)
         in_queue.task_done()
@@ -434,8 +442,9 @@ def service_tests(in_queue, fail_queue, out_queue):
     for build in read_queue(in_queue):
         try:
             build.do_test()
-        except Exception as error:
-            fail_queue.put((build, "%s" % error))
+        # (Ignore warning about "too broad" an except.)
+        except Exception as error:  # pylint: disable=W0703
+            fail_queue.put((build, f"{error}"))
         else:
             out_queue.put(build)
         in_queue.task_done()
@@ -445,7 +454,7 @@ def report_failures(queue, message):
     """Report failures from a failure queue.  Return total number."""
     failures = 0
     for build, error in read_queue(queue, block=False):
-        print("%s: %s - %s" % (message, build.config.name(), error))
+        print(f"{message}: {build.config.name()} - {error}")
         failures += 1
     return failures
 
@@ -469,9 +478,10 @@ def gather_builds(args):
         verbose=args.verbose)
     if list(compilers) == []:
         raise Fail(
-            "Did not find any viable compilers.  Tried: %s."
-            % ', '.join(compiler_candidates))
+            "Did not find any viable compilers.  "
+            f"Tried: {', '.join(compiler_candidates)}.")
 
+    dialects = args.dialects.split(',')
     opt_levels = args.optimize.split(',')
     link_types = LINK.items()
     debug_mixes = DEBUG.items()
@@ -487,23 +497,27 @@ def gather_builds(args):
             args.logs,
             AutotoolsConfig(
                 opt=opt, link=link, link_opts=link_opts, debug=debug,
-                debug_opts=debug_opts, cxx=cxx, stdlib=stdlib))
+                debug_opts=debug_opts, cxx=cxx, stdlib=stdlib,
+                dialect=dialect))
         for opt in sorted(opt_levels)
         for link, link_opts in sorted(link_types)
         for debug, debug_opts in sorted(debug_mixes)
         for cxx, stdlib in compilers
+        for dialect in dialects
     ]
 
     cmake = find_cmake_command()
     if cmake is not None:
-        builds.append(CMakeBuild(args.logs, CMakeConfig(cmake)))
+        builds.append(CMakeBuild(
+            args.logs, CMakeConfig(cmake, dialect=dialects[0])))
     return builds
 
 
-def enqueue(queue, build, *args):
+# (Ignore warning about unused parameter.)
+def enqueue(queue, build, *args):  # pylint: disable=W0613
     """Put `build` on `queue`.
 
-    Ignores additional arguments, so that it can be used as a clalback for
+    Ignores additional arguments, so that it can be used as a callback for
     `Pool`.
 
     We do this instead of a lambda in order to get the closure right.  We want
@@ -518,14 +532,16 @@ def enqueue_error(queue, build, error):
     queue.put((build, error))
 
 
-def main(args):
+# Disable pylint warning about too many local variables.  I see no way to
+# simplify this that doesn't make it less clear.
+def main(args):  # pylint: disable=R0914
     """Do it all."""
     if not os.path.isdir(args.logs):
-        raise Fail("Logs location '%s' is not a directory." % args.logs)
+        raise Fail(f"Logs location '{args.logs}' is not a directory.")
 
     builds = gather_builds(args)
     if args.verbose:
-        print("Lined up %d builds." % len(builds))
+        print(f"Lined up {len(builds)} builds.")
 
     # The "configure" step is single-threaded.  We can run many at the same
     # time, even when we're also running a "build" step at the same time.
@@ -613,18 +629,16 @@ def main(args):
         print("All tests OK.")
     else:
         print(
-            "Failures during configure: %d - build: %d - test: %d.  OK: %d."
-            % (
-                configure_fail_count,
-                build_fail_count,
-                test_fail_count,
-                ok_count,
-            ))
+            f"Failures during configure: {configure_fail_count} - "
+            f"build: {build_fail_count} - "
+            f"test: {test_fail_count}.  "
+            f"OK: {ok_count}."
+        )
 
 
 if __name__ == '__main__':
     try:
-        exit(main(parse_args()))
+        main(parse_args())
     except Fail as failure:
-        stderr.write("%s\n" % failure)
-        exit(2)
+        sys.stderr.write(f"{failure}\n")
+        sys.exit(2)

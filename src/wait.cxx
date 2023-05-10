@@ -2,16 +2,23 @@
  */
 #include "pqxx-source.hxx"
 
+#include <array>
+
+// For WSAPoll().
+// Normally we'd do this *after* including <thread>, but MinGW complains: it
+// issues a warning telling us to include winsock2.h before windows.h.
+// We don't actually include windows.h ourselves, but it looks as if MinGW's
+// <thread> does.
+#if __has_include(<winsock2.h>)
+#  include <winsock2.h>
+#  define PQXX_HAVE_SELECT
+#endif
+
 // The <thread> header is still broken on MinGW.  :-(
 #if defined(PQXX_HAVE_SLEEP_FOR)
 #  include <thread>
 #endif
 
-// For WSAPoll():
-#if __has_include(<winsock2.h>)
-#  include <winsock2.h>
-#  define PQXX_HAVE_SELECT
-#endif
 #if __has_include(<ws2tcpip.h>)
 #  include <ws2tcpip.h>
 #endif
@@ -87,18 +94,18 @@ void pqxx::internal::wait_fd(
 {
 // WSAPoll is available in winsock2.h only for versions of Windows >= 0x0600
 #if defined(_WIN32) && (_WIN32_WINNT >= 0x0600)
+  static_assert(SOCKET_ERROR == -1);
   short const events{static_cast<short>(
     (for_read ? POLLRDNORM : 0) | (for_write ? POLLWRNORM : 0))};
   WSAPOLLFD fdarray{SOCKET(fd), events, 0};
-  WSAPoll(&fdarray, 1, to_milli<unsigned>(seconds, microseconds));
-  // TODO: Check for errors.
+  int const code{
+    WSAPoll(&fdarray, 1u, to_milli<unsigned>(seconds, microseconds))};
 #elif defined(PQXX_HAVE_POLL)
   auto const events{static_cast<short>(
     POLLERR | POLLHUP | POLLNVAL | (for_read ? POLLIN : 0) |
     (for_write ? POLLOUT : 0))};
   pollfd pfd{fd, events, 0};
-  poll(&pfd, 1, to_milli<int>(seconds, microseconds));
-  // TODO: Check for errors.
+  int const code{poll(&pfd, 1, to_milli<int>(seconds, microseconds))};
 #else
   // No poll()?  Our last option is select().
   fd_set read_fds;
@@ -116,9 +123,22 @@ void pqxx::internal::wait_fd(
   set_fdbit(except_fds, fd);
 
   timeval tv = {seconds, microseconds};
-  select(fd + 1, &read_fds, &write_fds, &except_fds, &tv);
-  // TODO: Check for errors.
+  int const code{select(fd + 1, &read_fds, &write_fds, &except_fds, &tv)};
 #endif
+
+  if (code == -1)
+  {
+    std::array<char, 200> errbuf;
+    int const err_code
+    {
+#if defined(_WIN32) && (_WIN32_WINNT >= 0x0600)
+      WSAGetLastError()
+#else
+      errno
+#endif
+    };
+    throw std::runtime_error{pqxx::internal::error_string(err_code, errbuf)};
+  }
 }
 
 

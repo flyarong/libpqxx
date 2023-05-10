@@ -4,7 +4,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/largeobject instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -339,7 +339,10 @@ private:
   {
     return errmsg(&tx.conn());
   }
-  PQXX_PRIVATE std::string errmsg() const { return errmsg(m_conn); }
+  PQXX_PRIVATE std::string errmsg() const
+  {
+    return errmsg(m_conn);
+  }
   PQXX_PRIVATE std::int64_t seek(std::int64_t offset, int whence);
   std::size_t raw_read(std::byte buf[], std::size_t size);
   void raw_write(std::byte const buf[], std::size_t size);

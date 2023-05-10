@@ -1,6 +1,6 @@
 /** Result loops.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -91,7 +91,7 @@ public:
   iterator end() const { return {}; }
 
 private:
-  pqxx::result const &m_home;
+  pqxx::result const m_home;
 };
 } // namespace pqxx::internal
 
@@ -99,5 +99,26 @@ private:
 template<typename... TYPE> inline auto pqxx::result::iter() const
 {
   return pqxx::internal::result_iteration<TYPE...>{*this};
+}
+
+
+template<typename CALLABLE>
+inline void pqxx::result::for_each(CALLABLE &&func) const
+{
+  using args_tuple = internal::args_t<decltype(func)>;
+  constexpr auto sz{std::tuple_size_v<args_tuple>};
+  static_assert(
+    sz > 0,
+    "Callback for for_each must take parameters, one for each column in the "
+    "result.");
+
+  auto const cols{this->columns()};
+  if (sz != cols)
+    throw usage_error{internal::concat(
+      "Callback to for_each takes ", sz, "parameter", (sz == 1) ? "" : "s",
+      ", but result set has ", cols, "field", (cols == 1) ? "" : "s", ".")};
+
+  using pass_tuple = pqxx::internal::strip_types_t<args_tuple>;
+  for (auto const r : *this) std::apply(func, r.as_tuple<pass_tuple>());
 }
 #endif

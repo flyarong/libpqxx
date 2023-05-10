@@ -2,29 +2,30 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/version instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_VERSION
+#if !defined(PQXX_H_VERSION)
+#  define PQXX_H_VERSION
 
 #  if !defined(PQXX_HEADER_PRE)
 #    error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
 #  endif
 
 /// Full libpqxx version string.
-#  define PQXX_VERSION "7.7.1"
+#  define PQXX_VERSION "7.8.0"
 /// Library ABI version.
-#  define PQXX_ABI "7.7"
+#  define PQXX_ABI "7.8"
 
 /// Major version number.
 #  define PQXX_VERSION_MAJOR 7
 /// Minor version number.
-#  define PQXX_VERSION_MINOR 7
+#  define PQXX_VERSION_MINOR 8
 
-#  define PQXX_VERSION_CHECK check_pqxx_version_7_7
+#  define PQXX_VERSION_CHECK check_pqxx_version_7_8
 
 namespace pqxx::internal
 {

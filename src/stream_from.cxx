@@ -2,7 +2,7 @@
  *
  * pqxx::stream_from enables optimized batch reads from a database table.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -11,6 +11,8 @@
 #include "pqxx-source.hxx"
 
 #include <cassert>
+#include <cstring>
+#include <string_view>
 
 #include "pqxx/internal/header-pre.hxx"
 
@@ -24,11 +26,10 @@
 
 namespace
 {
-pqxx::internal::glyph_scanner_func *
-get_scanner(pqxx::transaction_base const &tx)
+pqxx::internal::char_finder_func *get_finder(pqxx::transaction_base const &tx)
 {
   auto const group{pqxx::internal::enc_group(tx.conn().encoding_id())};
-  return pqxx::internal::get_glyph_scanner(group);
+  return pqxx::internal::get_char_finder<'\t', '\\'>(group);
 }
 
 
@@ -38,7 +39,7 @@ constexpr std::string_view class_name{"stream_from"};
 
 pqxx::stream_from::stream_from(
   transaction_base &tx, from_query_t, std::string_view query) :
-        transaction_focus{tx, class_name}, m_glyph_scanner{get_scanner(tx)}
+        transaction_focus{tx, class_name}, m_char_finder{get_finder(tx)}
 {
   tx.exec0(internal::concat("COPY ("sv, query, ") TO STDOUT"sv));
   register_me();
@@ -47,8 +48,7 @@ pqxx::stream_from::stream_from(
 
 pqxx::stream_from::stream_from(
   transaction_base &tx, from_table_t, std::string_view table) :
-        transaction_focus{tx, class_name, table},
-        m_glyph_scanner{get_scanner(tx)}
+        transaction_focus{tx, class_name, table}, m_char_finder{get_finder(tx)}
 {
   tx.exec0(internal::concat("COPY "sv, tx.quote_name(table), " TO STDOUT"sv));
   register_me();
@@ -58,8 +58,7 @@ pqxx::stream_from::stream_from(
 pqxx::stream_from::stream_from(
   transaction_base &tx, std::string_view table, std::string_view columns,
   from_table_t) :
-        transaction_focus{tx, class_name, table},
-        m_glyph_scanner{get_scanner(tx)}
+        transaction_focus{tx, class_name, table}, m_char_finder{get_finder(tx)}
 {
   if (std::empty(columns))
     PQXX_UNLIKELY
@@ -90,7 +89,9 @@ pqxx::stream_from pqxx::stream_from::table(
   std::initializer_list<std::string_view> columns)
 {
   auto const &conn{tx.conn()};
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
   return raw_table(tx, conn.quote_table(path), conn.quote_columns(columns));
+#include "pqxx/internal/ignore-deprecated-post.hxx"
 }
 
 
@@ -127,7 +128,8 @@ pqxx::stream_from::raw_line pqxx::stream_from::get_raw_line()
   }
   else
   {
-    return {};
+    return std::make_pair(
+      std::unique_ptr<char, void(*)(void const *)>{nullptr, nullptr}, 0u);
   }
 }
 
@@ -177,8 +179,8 @@ void pqxx::stream_from::parse_line()
   if (m_finished)
     PQXX_UNLIKELY
   return;
-  auto const next_seq{m_glyph_scanner};
 
+  // TODO: Any way to keep current size in a local var, for speed?
   m_fields.clear();
 
   auto const [line, line_size] = get_raw_line();
@@ -199,8 +201,7 @@ void pqxx::stream_from::parse_line()
   m_row.resize(line_size + 1);
 
   char const *line_begin{line.get()};
-  char const *line_end{line_begin + line_size};
-  char const *read{line_begin};
+  std::string_view const line_view{line_begin, line_size};
 
   // Output iterator for unescaped text.
   char *write{m_row.data()};
@@ -218,89 +219,57 @@ void pqxx::stream_from::parse_line()
   // Beginning of current field in m_row, or nullptr for null fields.
   char const *field_begin{write};
 
-  while (read < line_end)
+  std::size_t offset{0};
+  while (offset < line_size)
   {
-    auto const offset{static_cast<std::size_t>(read - line_begin)};
-    auto const glyph_end{line_begin + next_seq(line_begin, line_size, offset)};
-    // XXX: find_char<'\t', '\\'>().
-    if (glyph_end == read + 1)
-    {
-      // Single-byte character.
-      char c{*read++};
-      switch (c)
-      {
-      case '\t': // Field separator.
-        // End the field.
-        if (field_begin == nullptr)
-        {
-          m_fields.emplace_back();
-        }
-        else
-        {
-          // Would love to emplace_back() here, but gcc 9.1 warns about the
-          // constructor not throwing.  It suggests adding "noexcept."  Which
-          // we can hardly do, without std::string_view guaranteeing it.
-          m_fields.push_back(zview{field_begin, write - field_begin});
-          *write++ = '\0';
-        }
-        field_begin = write;
-        break;
-
-        PQXX_UNLIKELY
-      case '\\': {
-        // Escape sequence.
-        if (read >= line_end)
-          throw failure{"Row ends in backslash"};
-
-        c = *read++;
-        switch (c)
-        {
-        case 'N':
-          // Null value.
-          if (write != field_begin)
-            throw failure{"Null sequence found in nonempty field"};
-          field_begin = nullptr;
-          // (If there's any characters _after_ the null we'll just crash.)
-          break;
-
-        case 'b': // Backspace.
-          PQXX_UNLIKELY
-          *write++ = '\b';
-          break;
-        case 'f': // Form feed
-          PQXX_UNLIKELY
-          *write++ = '\f';
-          break;
-        case 'n': // Line feed.
-          *write++ = '\n';
-          break;
-        case 'r': // Carriage return.
-          *write++ = '\r';
-          break;
-        case 't': // Horizontal tab.
-          *write++ = '\t';
-          break;
-        case 'v': // Vertical tab.
-          *write++ = '\v';
-          break;
-
-        default:
-          PQXX_LIKELY
-          // Regular character ("self-escaped").
-          *write++ = c;
-          break;
-        }
-      }
+    auto const stop_char{m_char_finder(line_view, offset)};
+    // Copy the text we have so far.  It's got no special characters in it.
+    std::memcpy(write, &line_begin[offset], stop_char - offset);
+    write += (stop_char - offset);
+    if (stop_char >= line_size)
       break;
+    offset = stop_char;
 
-        PQXX_LIKELY
-      default: *write++ = c; break;
+    char const special{line_begin[stop_char]};
+    ++offset;
+    if (special == '\t')
+    {
+      // Field separator.  End the field.
+      // End the field.
+      if (field_begin == nullptr)
+      {
+        m_fields.emplace_back();
       }
+      else
+      {
+        // Would love to emplace_back() here, but gcc 9.1 warns about the
+        // constructor not throwing.  It suggests adding "noexcept."  Which
+        // we can hardly do, without std::string_view guaranteeing it.
+        m_fields.push_back(zview{field_begin, write - field_begin});
+        *write++ = '\0';
+      }
+      // Set up for the next field.
+      field_begin = write;
     }
     else
     {
-      // Multi-byte sequence.  Never treated specially, so just append.
-      while (read < glyph_end) *write++ = *read++;
+      // Escape sequence.
+      assert(special == '\\');
+      if ((offset) >= line_size)
+        throw failure{"Row ends in backslash"};
+
+      // The database will only escape ASCII characters, so no need to use
+      // the glyph scanner.
+      char const escaped{line_begin[offset++]};
+      if (escaped == 'N')
+      {
+        // Null value.
+        if (write != field_begin)
+          throw failure{"Null sequence found in nonempty field"};
+        field_begin = nullptr;
+        // (If there's any characters _after_ the null we'll just crash.)
+      }
+      *write++ = pqxx::internal::unescape_char(escaped);
     }
   }
 

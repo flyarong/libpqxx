@@ -2,7 +2,7 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/zview instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2023, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -40,12 +40,14 @@ public:
   constexpr zview() noexcept = default;
 
   /// Convenience overload: construct using pointer and signed length.
-  constexpr zview(char const text[], std::ptrdiff_t len) :
+  constexpr zview(char const text[], std::ptrdiff_t len) noexcept(
+    noexcept(std::string_view{text, static_cast<std::size_t>(len)})) :
           std::string_view{text, static_cast<std::size_t>(len)}
   {}
 
   /// Convenience overload: construct using pointer and signed length.
-  constexpr zview(char text[], std::ptrdiff_t len) :
+  constexpr zview(char text[], std::ptrdiff_t len) noexcept(
+    noexcept(std::string_view{text, static_cast<std::size_t>(len)})) :
           std::string_view{text, static_cast<std::size_t>(len)}
   {}
 
@@ -73,7 +75,9 @@ public:
    * do it many times, it's probably better to create the `zview` once and
    * re-use it.
    */
-  constexpr zview(char const str[]) : std::string_view{str} {}
+  constexpr zview(char const str[]) noexcept(noexcept(std::string_view{str})) :
+          std::string_view{str}
+  {}
 
   /// Construct a `zview` from a string literal.
   /** A C++ string literal ("foo") normally looks a lot like a pointer to
